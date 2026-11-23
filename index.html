@@ -4,14 +4,14 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>원탭 클립 팩토리 — 긴 영상 → 9:16 숏폼 클립 공장</title>
-<meta name="description" content="긴 가로 영상(강의·브이로그·게임·인터뷰)을 넣으면 무음(죽은 초)을 지우고, 장면 컷을 찾아 15초 내외 클립으로 나누고, 9:16으로 피사체를 따라 리프레임한 뒤 자막까지 얹어 브라우저에서 실제 H.264 MP4 여러 개로 뽑아 줍니다. 가입 없음, 영상 서버 전송 없음." />
+<meta name="description" content="긴 가로 영상(강의·브이로그·게임·인터뷰)을 넣으면 무음(죽은 초)을 지우고, 장면 컷을 찾아 15초 내외 클립으로 나누고, 9:16으로 피사체를 따라 리프레임한 뒤 자막까지 얹어 브라우저에서 실제 H.264 MP4 여러 개로 뽑아 줍니다. 자막(.srt/.vtt)을 넣으면 AI가 스토리·재미·반전 구간을 골라 클립으로 만들고, 원본 대사를 베끼지 않은 AI 해설 자막까지 새로 씁니다. 가입 없음, 영상 서버 전송 없음." />
 <meta name="theme-color" content="#06070A" />
 <meta name="color-scheme" content="dark light" />
 <link rel="canonical" href="https://marcj81.github.io/onetap-clip-factory/" />
 <link rel="icon" href="favicon.svg" type="image/svg+xml" />
 <link rel="stylesheet" href="styles.css" />
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"WebApplication","name":"원탭 클립 팩토리","applicationCategory":"MultimediaApplication","operatingSystem":"Web","offers":{"@type":"Offer","price":"0","priceCurrency":"KRW"},"description":"긴 영상을 무음 제거·장면 컷 감지·9:16 피사체 추적 리프레임·자막과 함께 여러 개의 숏폼 MP4(H.264)로 뽑는 브라우저 완결 도구. 서버 전송 없이 동작하며, 무료 AI 맛보기로 클립 제목·훅·해시태그를 만듭니다.","inLanguage":"ko"}
+{"@context":"https://schema.org","@type":"WebApplication","name":"원탭 클립 팩토리","applicationCategory":"MultimediaApplication","operatingSystem":"Web","offers":{"@type":"Offer","price":"0","priceCurrency":"KRW"},"description":"긴 영상을 무음 제거·장면 컷 감지·9:16 피사체 추적 리프레임·자막과 함께 여러 개의 숏폼 MP4(H.264)로 뽑는 브라우저 완결 도구. 자막을 넣으면 AI가 스토리·재미 구간을 추천하고 해설 자막을 새로 쓰며, 서버 전송 없이 동작합니다.","inLanguage":"ko"}
 </script>
 </head>
 <body>
@@ -85,7 +85,57 @@
     <div class="workbench">
 
       <!-- ── 왼쪽 레일 ── -->
-      <aside class="rail" aria-label="감지·리프레임·자막 설정">
+      <aside class="rail" aria-label="스토리·감지·리프레임·자막 설정">
+
+        <section class="panel story-panel" id="panel-story">
+          <header class="panel-head">
+            <span class="panel-no">01</span>
+            <h2>자막 → 스토리 구간</h2>
+            <span class="panel-tag" id="story-tag">STORY · AI</span>
+          </header>
+          <div class="panel-body">
+            <div class="story-drop" id="story-drop" tabindex="0" role="button" aria-label="자막 파일 열기. 클릭하거나 .srt·.vtt 파일을 끌어다 놓으세요.">
+              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 14h4M14 14h3M7 10.5h3M12.5 10.5h4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+              <span class="dz-copy"><strong>.srt / .vtt 자막</strong><small>끌어다 놓기 · 눌러서 열기</small></span>
+            </div>
+            <input type="file" id="story-file" accept=".srt,.vtt,text/vtt,text/plain" hidden />
+            <textarea id="story-text" rows="3" spellcheck="false" placeholder="자막 텍스트를 붙여넣어도 됩니다&#10;1&#10;00:00:01,000 --&gt; 00:00:02,000&#10;대사"></textarea>
+            <div class="btn-row">
+              <button type="button" class="btn btn-soft btn-sm" id="btn-story-text">붙여넣기 적용</button>
+              <button type="button" class="btn btn-soft btn-sm" id="btn-story-demo">데모 자막 불러오기</button>
+            </div>
+            <p class="story-status" id="story-status">자막을 넣으면 스토리·재미·반전 구간과 그 위에 얹을 해설 자막을 함께 골라 줍니다.</p>
+            <span class="story-sub" id="story-sub-state">자막 없음</span>
+            <div class="field-row">
+              <label class="mini-field" for="sel-story-count">
+                <span>개수</span>
+                <select id="sel-story-count">
+                  <option value="3">3개</option>
+                  <option value="4" selected>4개</option>
+                  <option value="5">5개</option>
+                  <option value="6">6개</option>
+                </select>
+              </label>
+              <label class="mini-field" for="sel-story-len">
+                <span>길이</span>
+                <select id="sel-story-len">
+                  <option value="short">4~10초</option>
+                  <option value="normal" selected>6~20초</option>
+                  <option value="long">10~30초</option>
+                </select>
+              </label>
+            </div>
+            <button type="button" class="btn btn-primary btn-block" id="btn-story-run" disabled>AI 스토리 구간 찾기</button>
+            <p class="story-fallback" id="story-fallback" hidden>무료 AI를 쓰지 못해 자막 규칙으로 초안을 만들었습니다. 문장은 다듬어 쓰세요. <button type="button" class="link-btn" id="btn-story-pro">Pro 연결</button></p>
+            <div class="story-actions" id="story-actions" hidden>
+              <button type="button" class="btn btn-accent btn-sm" id="btn-story-apply-all">추천 4개 클립으로 담기</button>
+              <button type="button" class="link-btn muted" id="btn-story-clear">지우기</button>
+            </div>
+            <div class="story-result" id="story-result">
+              <div class="empty-state small"><p>자막을 넣고 버튼을 누르면 추천 구간이 여기에 나옵니다.</p></div>
+            </div>
+          </div>
+        </section>
 
         <section class="panel" id="panel-detect">
           <header class="panel-head">
@@ -198,6 +248,13 @@
               <span class="switch-ui" aria-hidden="true"></span>
             </label>
 
+            <div class="seg" id="caption-modes" role="radiogroup" aria-label="자막 표시 모드">
+              <button type="button" class="seg-btn is-active" role="radio" aria-checked="true" data-cmode="both">해설+대사</button>
+              <button type="button" class="seg-btn" role="radio" aria-checked="false" data-cmode="commentary">해설만</button>
+              <button type="button" class="seg-btn" role="radio" aria-checked="false" data-cmode="dialogue">대사만</button>
+            </div>
+            <p class="mode-note" id="caption-mode-note">해설 자막은 위, 원본 대사는 아래 — 두 층이 겹치지 않게 따로 그립니다.</p>
+
             <div class="style-grid" id="caption-styles" role="radiogroup" aria-label="자막 스타일"></div>
 
             <div class="btn-row">
@@ -238,7 +295,7 @@
               <input type="url" id="yt-url" placeholder="https://www.youtube.com/watch?v=..." spellcheck="false" />
               <button type="button" class="btn btn-soft btn-sm" id="btn-copy-cmd">명령 복사</button>
             </div>
-            <code class="cmd" id="yt-cmd">yt-dlp -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]" "https://www.youtube.com/watch?v=..."</code>
+            <code class="cmd" id="yt-cmd">yt-dlp -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]" --write-subs --write-auto-subs --sub-langs "ko.*,en.*" --convert-subs srt -o "%(title)s.%(ext)s" "https://www.youtube.com/watch?v=..."</code>
           </details>
         </section>
 
@@ -492,6 +549,32 @@
           </details>
         </div>
       </section>
+
+      <section class="panel comm-panel">
+        <header class="panel-head">
+          <span class="panel-no">T2</span>
+          <h2>AI 해설 자막</h2>
+          <span class="panel-tag" id="comm-count">0 큐</span>
+        </header>
+        <div class="panel-body">
+          <div class="cue-tools">
+            <button type="button" class="btn btn-soft btn-sm" id="btn-comm-add">+ 큐 추가</button>
+            <button type="button" class="btn btn-soft btn-sm" id="btn-comm-regen">초안 다시 만들기</button>
+            <label class="comm-style" for="sel-comm-style">
+              <span>모양</span>
+              <select id="sel-comm-style">
+                <option value="badge" selected>배지</option>
+                <option value="plain">외곽선</option>
+              </select>
+            </label>
+            <span class="cue-status" id="comm-clip">클립 없음</span>
+          </div>
+          <p class="hint">스토리 추천으로 담은 클립에는 AI가 새로 쓴 해설 자막이, 나머지 클립에는 자막 대사로 만든 초안이 붙습니다. 문장을 고치면 미리보기·MP4에 그대로 반영됩니다.</p>
+          <div class="comm-list" id="comm-list">
+            <div class="empty-state small"><p>클립을 고르면 해설 자막이 여기에 나옵니다.</p></div>
+          </div>
+        </div>
+      </section>
     </div>
   </section>
 
@@ -531,8 +614,9 @@
 
       <section class="panel guide-card">
         <header class="panel-head"><span class="panel-no">03</span><h2>YouTube에서 가져오기</h2></header>
-        <p class="hint">내 컴퓨터에 <code>yt-dlp</code>가 있다면 아래 한 줄이면 됩니다. 받은 파일을 공장에 끌어다 놓으세요.</p>
-        <code class="cmd block">yt-dlp -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]" "https://www.youtube.com/watch?v=..."</code>
+        <p class="hint">내 컴퓨터에 <code>yt-dlp</code>가 있다면 아래 한 줄이면 영상과 자막(.srt)을 함께 받습니다. 받은 파일을 공장에 끌어다 놓으세요.</p>
+        <code class="cmd block">yt-dlp -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]" --write-subs --write-auto-subs --sub-langs "ko.*,en.*" --convert-subs srt -o "%(title)s.%(ext)s" "https://www.youtube.com/watch?v=..."</code>
+        <p class="hint">자막이 따로 안 나오면 <code>--sub-langs ko</code>를 빼고 다시 받아 보세요. 자동 생성 자막이 없으면 직접 만든 자막을 올리면 됩니다.</p>
         <p class="hint">영상 소유자의 권리를 확인하고, 허락된 범위에서만 쓰세요. 이 앱은 링크를 어디로도 보내지 않습니다.</p>
       </section>
 
@@ -566,7 +650,7 @@
     </div>
     <div class="footer-links">
       <a href="privacy.html" id="footer-privacy">개인정보 처리방침</a>
-      <span class="mono-label">v1.0.0 · 29호기</span>
+      <span class="mono-label">v1.1.0 · 29호기</span>
     </div>
     <p class="footer-note">영상·음성 서버 전송 0건 · 가입 0 · 광고·분석 도구 없음</p>
   </div>
