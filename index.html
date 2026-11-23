@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="dark" data-design="factory-console.v1">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>원탭 클립 팩토리 — 긴 영상 → 9:16 숏폼 클립 공장</title>
+<meta name="description" content="긴 가로 영상(강의·브이로그·게임·인터뷰)을 넣으면 무음(죽은 초)을 지우고, 장면 컷을 찾아 15초 내외 클립으로 나누고, 9:16으로 피사체를 따라 리프레임한 뒤 자막까지 얹어 브라우저에서 실제 H.264 MP4 여러 개로 뽑아 줍니다. 가입 없음, 영상 서버 전송 없음." />
+<meta name="theme-color" content="#06070A" />
+<meta name="color-scheme" content="dark light" />
+<link rel="canonical" href="https://marcj81.github.io/onetap-clip-factory/" />
+<link rel="icon" href="favicon.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="styles.css" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebApplication","name":"원탭 클립 팩토리","applicationCategory":"MultimediaApplication","operatingSystem":"Web","offers":{"@type":"Offer","price":"0","priceCurrency":"KRW"},"description":"긴 영상을 무음 제거·장면 컷 감지·9:16 피사체 추적 리프레임·자막과 함께 여러 개의 숏폼 MP4(H.264)로 뽑는 브라우저 완결 도구. 서버 전송 없이 동작하며, 무료 AI 맛보기로 클립 제목·훅·해시태그를 만듭니다.","inLanguage":"ko"}
+</script>
+</head>
+<body>
+<a class="skip-link" href="#main">본문으로 바로가기</a>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="#factory" data-tab-link="factory" aria-label="원탭 클립 팩토리 홈">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 40 40" width="32" height="32">
+          <rect x="2.5" y="7" width="23" height="26" rx="4" fill="none" stroke="currentColor" stroke-width="1.7" />
+          <rect x="20" y="12" width="15" height="21" rx="3" fill="none" stroke="currentColor" stroke-width="1.7" />
+          <path d="M7 12.5h3.5M7 27.5h3.5M16 12.5h3.5M16 27.5h3.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
+          <path d="M26 18v11" stroke="currentColor" stroke-width="1.4" stroke-dasharray="2 3" />
+          <circle cx="25.5" cy="17" r="2" fill="currentColor" />
+        </svg>
+      </span>
+      <span class="brand-text">
+        <strong>원탭 클립 팩토리</strong>
+        <small>ONETAP CLIP FACTORY / 29</small>
+      </span>
+    </a>
+
+    <nav class="tabs" role="tablist" aria-label="주요 화면">
+      <button class="tab is-active" role="tab" aria-selected="true" aria-controls="view-factory" id="tab-factory" data-tab="factory">공장</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="view-clips" id="tab-clips" data-tab="clips">클립 <span class="tab-count" id="tab-clip-count">0</span></button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="view-guide" id="tab-guide" data-tab="guide">가이드</button>
+    </nav>
+
+    <div class="top-actions">
+      <button type="button" class="pro-badge" id="btn-pro-badge" aria-haspopup="dialog" title="Pro 연결 상태">
+        <span class="dot" aria-hidden="true"></span>
+        <span id="pro-badge-label">무료 모드</span>
+      </button>
+      <button type="button" class="icon-btn" id="btn-theme" aria-label="라이트 모드로 전환" title="라이트/다크">
+        <svg class="ico-sun" viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="10" cy="10" r="3.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.3 4.3l1.4 1.4M14.3 14.3l1.4 1.4M15.7 4.3l-1.4 1.4M5.7 14.3l-1.4 1.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <svg class="ico-moon" viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M16.4 12.3A6.8 6.8 0 0 1 7.7 3.6a6.8 6.8 0 1 0 8.7 8.7z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="main" tabindex="-1">
+
+  <!-- ══════════════════════ 공장 ══════════════════════ -->
+  <section class="view is-active" id="view-factory" role="tabpanel" aria-labelledby="tab-factory">
+
+    <div class="factory-head">
+      <div class="head-copy">
+        <p class="kicker"><span class="live-dot" aria-hidden="true"></span> CLIP FACTORY / 29 · 9:16 · 2026</p>
+        <h1>긴 영상 하나, <em>세로 클립 여러 개.</em></h1>
+        <p class="lead">죽은 초를 지우고, 장면 컷으로 나누고, 9:16으로 따라잡고, 자막까지 — 실제 <strong>H.264 MP4</strong>로. 영상은 브라우저를 떠나지 않습니다.</p>
+        <div class="head-cta">
+          <button type="button" class="btn btn-primary" id="btn-demo-hero">데모 VOD 만들고 시작</button>
+          <button type="button" class="btn btn-ghost" id="btn-pick-hero">내 영상 열기</button>
+          <span class="mono-label">SIGNUP 0 · UPLOAD 0 · KEY 0</span>
+        </div>
+      </div>
+
+      <div class="head-ticker" aria-hidden="true">
+        <div class="ticker-row"><span>SOURCE</span><b id="tick-source">—</b></div>
+        <div class="ticker-row"><span>SPEECH</span><b id="tick-speech">—</b></div>
+        <div class="ticker-row"><span>CUTS</span><b id="tick-cuts">—</b></div>
+        <div class="ticker-row"><span>CLIPS</span><b id="tick-clips">—</b></div>
+        <div class="ticker-row"><span>QUEUE</span><b id="tick-queue">0 / 0</b></div>
+        <div class="ticker-bar"><i id="tick-bar"></i></div>
+        <p class="ticker-note">전 과정 로컬 · WebCodecs H.264</p>
+      </div>
+    </div>
+
+    <div class="workbench">
+
+      <!-- ── 왼쪽 레일 ── -->
+      <aside class="rail" aria-label="감지·리프레임·자막 설정">
+
+        <section class="panel" id="panel-detect">
+          <header class="panel-head">
+            <span class="panel-no">02</span>
+            <h2>죽은 초 · 장면 컷</h2>
+            <span class="panel-tag">DETECT</span>
+          </header>
+          <div class="panel-body">
+            <label class="switch-row" for="tg-silence">
+              <span class="switch-copy"><strong>무음 제거</strong><small>임계치 아래 구간을 클립에서 뺍니다</small></span>
+              <input type="checkbox" id="tg-silence" class="switch" checked />
+              <span class="switch-ui" aria-hidden="true"></span>
+            </label>
+
+            <div class="field">
+              <div class="field-head"><label for="rg-silence">무음 임계치</label><output id="out-silence">-38 dB</output></div>
+              <input type="range" id="rg-silence" min="-60" max="-12" step="1" value="-38" />
+              <div class="field-foot"><span>-60 dB (예민)</span><span>-12 dB (둔감)</span></div>
+            </div>
+
+            <div class="field">
+              <div class="field-head"><label for="rg-minside">최소 무음 길이</label><output id="out-minside">380 ms</output></div>
+              <input type="range" id="rg-minside" min="200" max="1200" step="20" value="380" />
+              <div class="field-foot"><span>숨소리는 살림</span><span>긴 침묵만 자름</span></div>
+            </div>
+
+            <div class="field">
+              <div class="field-head"><label for="rg-pad">말소리 여백</label><output id="out-pad">90 ms</output></div>
+              <input type="range" id="rg-pad" min="0" max="300" step="10" value="90" />
+              <div class="field-foot"><span>0 ms (타이트)</span><span>300 ms (여유)</span></div>
+            </div>
+
+            <div class="field">
+              <div class="field-head"><label for="rg-scene">장면 컷 감도</label><output id="out-scene">0.34</output></div>
+              <input type="range" id="rg-scene" min="0.1" max="0.9" step="0.02" value="0.34" />
+              <div class="field-foot"><span>예민 (컷 많음)</span><span>둔감</span></div>
+            </div>
+
+            <div class="field-row">
+              <label class="mini-field" for="sel-target">
+                <span>클립 길이</span>
+                <select id="sel-target">
+                  <option value="8000">8초</option>
+                  <option value="15000" selected>15초</option>
+                  <option value="25000">25초</option>
+                  <option value="35000">35초</option>
+                  <option value="45000">45초</option>
+                </select>
+              </label>
+              <label class="mini-field" for="sel-count">
+                <span>자동 선택</span>
+                <select id="sel-count">
+                  <option value="2">2개</option>
+                  <option value="3" selected>3개</option>
+                  <option value="5">5개</option>
+                  <option value="8">8개</option>
+                </select>
+              </label>
+            </div>
+
+            <button type="button" class="btn btn-soft btn-block" id="btn-redetect" disabled>설정으로 다시 감지</button>
+            <p class="detect-summary" id="detect-summary">원본을 넣으면 자동으로 분석합니다.</p>
+          </div>
+        </section>
+
+        <section class="panel" id="panel-reframe">
+          <header class="panel-head">
+            <span class="panel-no">03</span>
+            <h2>9:16 리프레임</h2>
+            <span class="panel-tag">REFRAME</span>
+          </header>
+          <div class="panel-body">
+            <div class="seg" role="radiogroup" aria-label="추적 방식" id="track-modes">
+              <button type="button" class="seg-btn is-active" role="radio" aria-checked="true" data-mode="subject">피사체 추적</button>
+              <button type="button" class="seg-btn" role="radio" aria-checked="false" data-mode="motion">움직임 추적</button>
+              <button type="button" class="seg-btn" role="radio" aria-checked="false" data-mode="center">중앙 고정</button>
+            </div>
+            <p class="mode-note" id="mode-note">피부톤 + 움직임 + 중앙 가중으로 크롭 중심을 부드럽게 따라갑니다.</p>
+
+            <div class="field">
+              <div class="field-head"><label for="rg-smooth">카메라 부드러움</label><output id="out-smooth">0.72</output></div>
+              <input type="range" id="rg-smooth" min="0" max="0.95" step="0.01" value="0.72" />
+              <div class="field-foot"><span>즉각 반응</span><span>느긋한 팬</span></div>
+            </div>
+
+            <div class="field">
+              <div class="field-head"><label for="rg-zoom">줌</label><output id="out-zoom">1.00×</output></div>
+              <input type="range" id="rg-zoom" min="1" max="1.6" step="0.02" value="1" />
+              <div class="field-foot"><span>원본 그대로</span><span>1.6× 확대</span></div>
+            </div>
+
+            <label class="switch-row compact" for="tg-safe">
+              <span class="switch-copy"><strong>안전 영역</strong><small>상·하단 UI 가림선</small></span>
+              <input type="checkbox" id="tg-safe" class="switch" checked />
+              <span class="switch-ui" aria-hidden="true"></span>
+            </label>
+          </div>
+        </section>
+
+        <section class="panel" id="panel-caption">
+          <header class="panel-head">
+            <span class="panel-no">04</span>
+            <h2>자막</h2>
+            <span class="panel-tag">CAPTION</span>
+          </header>
+          <div class="panel-body">
+            <label class="switch-row compact" for="tg-captions">
+              <span class="switch-copy"><strong>자막 굽기</strong><small>렌더 결과에 함께 넣습니다</small></span>
+              <input type="checkbox" id="tg-captions" class="switch" checked />
+              <span class="switch-ui" aria-hidden="true"></span>
+            </label>
+
+            <div class="style-grid" id="caption-styles" role="radiogroup" aria-label="자막 스타일"></div>
+
+            <div class="btn-row">
+              <button type="button" class="btn btn-soft btn-sm" id="btn-srt-open">SRT / VTT 불러오기</button>
+              <button type="button" class="btn btn-soft btn-sm" id="btn-demo-srt">데모 자막</button>
+            </div>
+            <input type="file" id="srt-input" accept=".srt,.vtt,text/plain" hidden />
+            <p class="hint" id="caption-note">음성 인식은 넣지 않았습니다. 쓰던 자막 파일을 그대로 올리면 타임코드까지 살립니다.</p>
+          </div>
+        </section>
+      </aside>
+
+      <!-- ── 가운데 스테이지 ── -->
+      <div class="stage-col">
+
+        <section class="panel source-bar" id="panel-source">
+          <div class="source-main">
+            <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="영상 파일 열기. 클릭하거나 파일을 끌어다 놓으세요.">
+              <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+              <span class="dz-copy"><strong>영상 파일을 떨어뜨리세요</strong><small>MP4 · WebM · MOV · 브라우저가 읽는 형식이면 됩니다</small></span>
+              <span class="dz-hint mono-label">DROP / CLICK</span>
+            </div>
+            <div class="source-btns">
+              <button type="button" class="btn btn-accent" id="btn-demo">데모 VOD 생성</button>
+              <button type="button" class="btn btn-soft" id="btn-pick">파일 선택</button>
+            </div>
+          </div>
+          <input type="file" id="file-input" accept="video/mp4,video/webm,video/quicktime,video/*" hidden />
+          <div class="source-meta" id="src-meta">
+            <span class="src-dot" aria-hidden="true"></span>
+            <span id="src-state">아직 원본이 없습니다 · 데모로 30초 만에 확인해 보세요</span>
+          </div>
+          <div class="source-progress" id="src-progress" hidden><i id="src-progress-bar"></i></div>
+          <details class="yt">
+            <summary><span>유튜브 링크로 가져오기</span><span class="mono-label">yt-dlp</span></summary>
+            <p class="hint">브라우저는 유튜브 영상을 직접 내려받을 수 없습니다(CORS·이용약관). 아래 명령을 내 컴퓨터 터미널에서 실행한 뒤, 받은 <code>.mp4</code>를 위 칸으로 끌어다 놓으세요. 이 앱은 링크를 전송하지 않습니다.</p>
+            <div class="yt-row">
+              <input type="url" id="yt-url" placeholder="https://www.youtube.com/watch?v=..." spellcheck="false" />
+              <button type="button" class="btn btn-soft btn-sm" id="btn-copy-cmd">명령 복사</button>
+            </div>
+            <code class="cmd" id="yt-cmd">yt-dlp -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]" "https://www.youtube.com/watch?v=..."</code>
+          </details>
+        </section>
+
+        <div class="monitors">
+          <section class="monitor monitor-src" aria-label="원본 모니터">
+            <header class="mon-head">
+              <span class="mon-label"><span class="live-dot" aria-hidden="true"></span> PROGRAM / SOURCE_01</span>
+              <span class="mon-tc" id="src-tc">00:00:00:00</span>
+            </header>
+            <div class="screen" id="src-screen" tabindex="0" role="button" aria-label="원본 모니터. 클릭하면 원본 모드로 돌아갑니다." title="클릭하면 원본 모드로 돌아갑니다">
+              <video id="src-video" playsinline preload="auto" muted></video>
+              <div class="screen-grid" aria-hidden="true"></div>
+              <div class="screen-empty" id="screen-empty">
+                <span class="empty-glyph" aria-hidden="true">16:9</span>
+                <p>원본을 넣으면 여기서 재생됩니다</p>
+                <span class="mono-label">SOURCE MONITOR</span>
+              </div>
+              <div class="crop-guide" id="src-crop-guide" hidden aria-hidden="true"><span>9:16 CROP</span></div>
+              <span class="screen-badge" id="src-badge" hidden>LIVE</span>
+            </div>
+            <footer class="mon-foot">
+              <span id="src-res">— × —</span>
+              <span id="src-fmt">—</span>
+              <span id="src-audio">AUDIO —</span>
+            </footer>
+          </section>
+
+          <section class="monitor monitor-out" aria-label="9:16 프리뷰">
+            <header class="mon-head">
+              <span class="mon-label">9:16 / OUTPUT</span>
+              <span class="mon-chip" id="out-clip">CLIP —</span>
+            </header>
+            <div class="phone">
+              <div class="phone-screen">
+                <canvas id="preview-canvas" width="540" height="960" role="img" aria-label="9:16 리프레임 미리보기"></canvas>
+                <div class="preview-empty" id="preview-empty">
+                  <span class="empty-glyph" aria-hidden="true">9:16</span>
+                  <p>크롭과 자막이<br />여기서 보입니다</p>
+                </div>
+                <div class="safe-area" id="safe-area" aria-hidden="true"><i class="safe-top"></i><i class="safe-bottom"></i></div>
+                <span class="phone-live" id="phone-live" hidden>● REC PREVIEW</span>
+              </div>
+              <div class="phone-notch" aria-hidden="true"></div>
+            </div>
+            <footer class="mon-foot">
+              <span id="out-tc">00:00.0</span>
+              <span id="out-mode">피사체 추적</span>
+              <span id="out-crop">크롭 —</span>
+            </footer>
+          </section>
+        </div>
+
+        <div class="transport">
+          <button type="button" class="icon-btn play" id="btn-play" aria-label="재생" disabled>
+            <svg class="ico-play" viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M6.5 4.2v11.6L16 10z" fill="currentColor"/></svg>
+            <svg class="ico-pause" viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M5.5 4.5h3v11h-3zM11.5 4.5h3v11h-3z" fill="currentColor"/></svg>
+          </button>
+          <button type="button" class="icon-btn" id="btn-prev-cut" aria-label="이전 컷으로" title="이전 컷" disabled>
+            <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M15 5v10L7 10z" fill="currentColor"/><path d="M5 5v10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          </button>
+          <button type="button" class="icon-btn" id="btn-next-cut" aria-label="다음 컷으로" title="다음 컷" disabled>
+            <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M5 5v10l8-5z" fill="currentColor"/><path d="M15 5v10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          </button>
+          <div class="transport-tc" id="tc-main">00:00:00:00</div>
+          <div class="transport-mid">
+            <input type="range" id="scrub" min="0" max="1000" value="0" step="1" aria-label="재생 위치" disabled />
+          </div>
+          <label class="switch-row inline" for="tg-loop">
+            <span class="switch-copy"><strong>클립 반복</strong></span>
+            <input type="checkbox" id="tg-loop" class="switch" checked />
+            <span class="switch-ui" aria-hidden="true"></span>
+          </label>
+          <button type="button" class="btn btn-soft btn-sm" id="btn-add-clip" disabled>이 구간을 클립으로</button>
+        </div>
+
+        <section class="panel wave-panel" aria-label="오디오 파형과 컷">
+          <header class="panel-head">
+            <span class="panel-no">A1</span>
+            <h2>오디오 파형 · 죽은 초</h2>
+            <span class="panel-tag" id="wave-state">원본 없음</span>
+          </header>
+          <div class="wave-wrap">
+            <div id="waveform" aria-label="오디오 파형. 클릭하면 그 지점으로 이동합니다."></div>
+            <div class="wave-overlay" id="wave-overlay" aria-hidden="true">
+              <div class="silence-layer" id="silence-layer"></div>
+              <div class="clip-layer" id="clip-layer"></div>
+              <div class="cut-layer" id="cut-layer"></div>
+              <div class="wave-playhead" id="wave-playhead"></div>
+            </div>
+          </div>
+          <div class="wave-legend">
+            <span><i class="lg lg-silence"></i>죽은 초</span>
+            <span><i class="lg lg-clip"></i>선택 클립</span>
+            <span><i class="lg lg-cut"></i>장면 컷</span>
+            <span class="legend-right mono-label" id="wave-meta">—</span>
+          </div>
+        </section>
+
+        <section class="panel clip-strip" aria-label="추출된 클립">
+          <header class="panel-head">
+            <span class="panel-no">05</span>
+            <h2>클립 <span class="count-pill" id="clip-count">0</span></h2>
+            <span class="panel-tag">HIGHLIGHTS</span>
+            <div class="head-actions">
+              <button type="button" class="link-btn" id="btn-select-all">전체 선택</button>
+              <button type="button" class="link-btn muted" id="btn-clear-clips">비우기</button>
+            </div>
+          </header>
+          <div class="clip-cards" id="clip-cards">
+            <div class="empty-state" id="clips-empty">
+              <p><strong>아직 클립이 없습니다.</strong> 원본을 넣으면 무음과 장면 컷을 읽어 하이라이트를 자동으로 골라 둡니다.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel timeline-panel" aria-label="컷 타임라인">
+          <header class="panel-head">
+            <span class="panel-no">SEQUENCE</span>
+            <h2>컷 타임라인</h2>
+            <span class="panel-tag" id="tl-meta">—</span>
+          </header>
+          <div class="timeline" id="timeline">
+            <div class="tl-lane" data-lane="video"><span class="tl-label">VIDEO</span><div class="tl-track" id="tl-video"></div></div>
+            <div class="tl-lane" data-lane="speech"><span class="tl-label">SPEECH</span><div class="tl-track" id="tl-speech"></div></div>
+            <div class="tl-lane" data-lane="cut"><span class="tl-label">CUT</span><div class="tl-track" id="tl-cut"></div></div>
+            <div class="tl-lane" data-lane="out"><span class="tl-label">9:16</span><div class="tl-track" id="tl-out"></div></div>
+            <div class="tl-playhead" id="tl-playhead"><span></span></div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ── 오른쪽 큐 ── -->
+      <aside class="queue-col" aria-label="렌더 큐와 기록">
+        <section class="panel render-panel">
+          <header class="panel-head">
+            <span class="panel-no">06</span>
+            <h2>렌더 큐</h2>
+            <span class="panel-tag" id="queue-count">0 / 0</span>
+          </header>
+          <div class="panel-body">
+            <div class="render-list" id="render-list">
+              <div class="empty-state small"><p>선택한 클립이 여기에 쌓입니다. 순서대로 실제 MP4가 만들어집니다.</p></div>
+            </div>
+
+            <div class="field-row">
+              <label class="mini-field" for="sel-preset">
+                <span>해상도</span>
+                <select id="sel-preset"></select>
+              </label>
+              <label class="mini-field" for="sel-fps">
+                <span>프레임</span>
+                <select id="sel-fps">
+                  <option value="30" selected>30 fps</option>
+                  <option value="24">24 fps</option>
+                </select>
+              </label>
+            </div>
+
+            <label class="switch-row compact" for="tg-render-caption">
+              <span class="switch-copy"><strong>자막 포함</strong><small>미리보기와 같은 스타일</small></span>
+              <input type="checkbox" id="tg-render-caption" class="switch" checked />
+              <span class="switch-ui" aria-hidden="true"></span>
+            </label>
+
+            <button type="button" class="btn btn-primary btn-block" id="btn-render" disabled>선택 클립 렌더</button>
+            <button type="button" class="btn btn-ghost btn-block" id="btn-cancel-render" hidden>렌더 취소</button>
+            <button type="button" class="btn btn-accent btn-block" id="btn-zip" hidden>완료된 클립 ZIP으로 받기</button>
+            <p class="render-summary" id="render-summary">H.264 · MP4 · 브라우저에서 인코딩</p>
+            <div class="cap-note" id="cap-note">이 브라우저의 인코더를 확인하는 중…</div>
+          </div>
+        </section>
+
+        <section class="panel ai-panel">
+          <header class="panel-head">
+            <span class="panel-no">AI</span>
+            <h2>제목 · 훅</h2>
+            <span class="panel-tag" id="ai-badge">무료 맛보기</span>
+          </header>
+          <div class="panel-body">
+            <p class="hint" id="ai-hint">클립 카드의 <strong>AI 훅</strong>을 누르면 제목·첫 문장·해시태그를 만듭니다. 무료 맛보기는 텍스트 프롬프트만 전송합니다.</p>
+            <div class="ai-out" id="ai-out" aria-live="polite">
+              <p class="ai-placeholder">아직 만든 훅이 없습니다.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel log-panel">
+          <header class="panel-head">
+            <span class="panel-no">LOG</span>
+            <h2>작업 기록</h2>
+            <div class="head-actions"><button type="button" class="link-btn muted" id="btn-clear-log">지우기</button></div>
+          </header>
+          <ol class="log-list" id="log-list" aria-live="polite">
+            <li class="log-item"><span class="log-time">--:--:--</span><span>공장 준비 완료 · 원본을 기다립니다</span></li>
+          </ol>
+        </section>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ══════════════════════ 클립 ══════════════════════ -->
+  <section class="view" id="view-clips" role="tabpanel" aria-labelledby="tab-clips" hidden>
+    <div class="page-head">
+      <div>
+        <p class="kicker">CLIP SHEET</p>
+        <h1>클립 다듬기</h1>
+        <p class="lead narrow">제목·훅을 고치고, 자막 타임코드를 직접 손보고, 렌더할 클립만 남기세요.</p>
+      </div>
+      <div class="page-head-actions">
+        <button type="button" class="btn btn-soft" id="btn-clips-to-factory">공장으로</button>
+        <button type="button" class="btn btn-primary" id="btn-clips-render">선택 클립 렌더</button>
+      </div>
+    </div>
+
+    <div class="clip-sheet">
+      <section class="panel clip-editor-panel">
+        <header class="panel-head">
+          <span class="panel-no">CLIPS</span>
+          <h2>클립 목록</h2>
+          <span class="panel-tag" id="sheet-count">0</span>
+        </header>
+        <div class="sheet-list" id="sheet-list">
+          <div class="empty-state"><p>아직 클립이 없습니다. 공장에서 원본을 분석하세요.</p></div>
+        </div>
+      </section>
+
+      <section class="panel cue-panel">
+        <header class="panel-head">
+          <span class="panel-no">T1</span>
+          <h2>자막 편집</h2>
+          <span class="panel-tag" id="cue-count">0 큐</span>
+        </header>
+        <div class="panel-body">
+          <div class="cue-tools">
+            <button type="button" class="btn btn-soft btn-sm" id="btn-cue-add">+ 큐 추가</button>
+            <button type="button" class="btn btn-soft btn-sm" id="btn-srt-export">SRT 내려받기</button>
+            <button type="button" class="btn btn-soft btn-sm" id="btn-cue-demo">데모 자막</button>
+            <button type="button" class="btn btn-soft btn-sm" id="btn-cue-shift">+0.5초 밀기</button>
+            <span class="cue-status" id="cue-status">자막 없음</span>
+          </div>
+          <div class="cue-list" id="cue-list">
+            <div class="empty-state small"><p>SRT/VTT를 올리거나, 데모 자막을 불러오세요.</p></div>
+          </div>
+          <details class="srt-box">
+            <summary>SRT 원문으로 고치기</summary>
+            <textarea id="cue-srt" rows="10" spellcheck="false" placeholder="1&#10;00:00:00,000 --> 00:00:02,000&#10;자막 문장"></textarea>
+            <div class="btn-row">
+              <button type="button" class="btn btn-soft btn-sm" id="btn-srt-apply">원문 적용</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-srt-refresh">목록에서 다시 만들기</button>
+            </div>
+          </details>
+        </div>
+      </section>
+    </div>
+  </section>
+
+  <!-- ══════════════════════ 가이드 ══════════════════════ -->
+  <section class="view" id="view-guide" role="tabpanel" aria-labelledby="tab-guide" hidden>
+    <div class="page-head">
+      <div>
+        <p class="kicker">FIELD MANUAL</p>
+        <h1>어떻게 도는가</h1>
+        <p class="lead narrow">무엇을 실제로 계산하고, 무엇은 하지 않는지 그대로 적었습니다.</p>
+      </div>
+    </div>
+
+    <div class="guide-grid">
+      <section class="panel guide-card">
+        <header class="panel-head"><span class="panel-no">01</span><h2>파이프라인</h2></header>
+        <ol class="steps">
+          <li><strong>읽기</strong><span>브라우저가 원본을 디코딩합니다. 파일은 어디로도 업로드되지 않습니다.</span></li>
+          <li><strong>무음 찾기</strong><span>Web Audio로 20ms 단위 음량을 재고, 임계치 아래가 일정 시간 이어지면 죽은 초로 표시합니다.</span></li>
+          <li><strong>장면 컷</strong><span>표본 프레임의 밝기 히스토그램이 급변하는 지점을 후보로 뽑습니다. 편집점이 아니라 후보입니다.</span></li>
+          <li><strong>클립 계획</strong><span>남긴 구간을 목표 길이로 묶고, 가까운 장면 컷에 경계를 맞춥니다.</span></li>
+          <li><strong>9:16 리프레임</strong><span>열별 피부톤·움직임·중앙 가중치로 크롭 중심을 정하고, 속도 제한을 둔 곡선으로 부드럽게 이동시킵니다.</span></li>
+          <li><strong>렌더</strong><span>WebCodecs(H.264) + mediabunny로 프레임과 소리를 MP4에 먹싱합니다. AAC가 없는 브라우저는 Opus 오디오로 대체합니다.</span></li>
+        </ol>
+      </section>
+
+      <section class="panel guide-card">
+        <header class="panel-head"><span class="panel-no">02</span><h2>솔직한 한계</h2></header>
+        <ul class="plain-list">
+          <li>얼굴 인식 모델은 넣지 않았습니다. 피부톤·움직임 추적은 가볍고 빠르지만, 얼굴이 작거나 피부색이 배경과 비슷하면 중앙 쪽으로 돌아갑니다.</li>
+          <li>음성 인식(자동 자막)은 없습니다. 쓰던 SRT/VTT를 올리거나 직접 입력하세요.</li>
+          <li>장면 컷은 히스토그램 표본 기반이라, 화면이 서서히 밝아지는 구간은 놓칠 수 있습니다.</li>
+          <li>유튜브 링크는 브라우저에서 직접 받을 수 없습니다. yt-dlp로 받은 파일을 끌어다 놓으세요.</li>
+          <li>긴 영상은 프레임 표본을 최대 240개로 제한합니다(파형은 전체를 계산).</li>
+        </ul>
+      </section>
+
+      <section class="panel guide-card">
+        <header class="panel-head"><span class="panel-no">03</span><h2>YouTube에서 가져오기</h2></header>
+        <p class="hint">내 컴퓨터에 <code>yt-dlp</code>가 있다면 아래 한 줄이면 됩니다. 받은 파일을 공장에 끌어다 놓으세요.</p>
+        <code class="cmd block">yt-dlp -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]" "https://www.youtube.com/watch?v=..."</code>
+        <p class="hint">영상 소유자의 권리를 확인하고, 허락된 범위에서만 쓰세요. 이 앱은 링크를 어디로도 보내지 않습니다.</p>
+      </section>
+
+      <section class="panel guide-card">
+        <header class="panel-head"><span class="panel-no">04</span><h2>개인정보</h2></header>
+        <p class="hint">영상·음성은 브라우저 메모리에서만 처리되고 서버로 전송되지 않습니다. 무료 AI 맛보기를 쓸 때는 <strong>자막에서 뽑은 텍스트 프롬프트만</strong> 전송됩니다.</p>
+        <p class="hint">Pro 키는 탭의 sessionStorage에만 저장되고, 연결한 제공자에게 브라우저에서 직접 요청합니다.</p>
+        <p><a href="privacy.html">개인정보 처리방침 전문</a></p>
+      </section>
+
+      <section class="panel guide-card">
+        <header class="panel-head"><span class="panel-no">05</span><h2>라이선스</h2></header>
+        <ul class="plain-list mono-small">
+          <li>mediabunny 1.66.2 — MPL-2.0</li>
+          <li>wavesurfer.js — BSD-3-Clause</li>
+          <li>JSZip — MIT</li>
+          <li>IBM Plex Sans KR — SIL Open Font License 1.1</li>
+          <li>Pro API 커넥터 · 무료 AI 클라이언트 — 이 앱의 자체 코드</li>
+        </ul>
+        <p class="hint">모든 라이브러리는 <code>assets/vendor/</code>에 로컬로 들어 있어, 첫 화면에서 외부 요청이 0건입니다.</p>
+      </section>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <strong>원탭 클립 팩토리</strong>
+      <p>긴 영상을 세로 클립으로. 브라우저에서 끝.</p>
+    </div>
+    <div class="footer-links">
+      <a href="privacy.html" id="footer-privacy">개인정보 처리방침</a>
+      <span class="mono-label">v1.0.0 · 29호기</span>
+    </div>
+    <p class="footer-note">영상·음성 서버 전송 0건 · 가입 0 · 광고·분석 도구 없음</p>
+  </div>
+</footer>
+
+<div class="toast-root" id="toast-root" aria-live="polite"></div>
+<div id="pro-modal-host"></div>
+
+<div class="busy" id="busy" hidden aria-live="assertive" aria-busy="true">
+  <div class="busy-card">
+    <div class="busy-spinner" aria-hidden="true"></div>
+    <strong id="busy-title">분석하는 중</strong>
+    <p id="busy-text">잠시만 기다려 주세요.</p>
+    <div class="busy-bar"><i id="busy-bar"></i></div>
+    <button type="button" class="btn btn-ghost btn-sm" id="btn-busy-cancel" hidden>취소</button>
+  </div>
+</div>
+
+<script src="core.js"></script>
+<script src="engines/free-ai.js"></script>
+<script src="engines/pro-api-connector.js"></script>
+<script src="engines/pro-studio.js"></script>
+<script src="assets/vendor/wavesurfer.min.js"></script>
+<script src="media.js"></script>
+<script src="demo.js"></script>
+<script src="render.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

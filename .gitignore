@@ -1,0 +1,8 @@
+# local-only: test harness and screenshots stay out of the published site
+test.js
+uitest.py
+preview-*.png
+*.mp4
+*.zip
+*.srt
+.DS_Store
