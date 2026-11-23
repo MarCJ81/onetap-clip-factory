@@ -15,7 +15,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  var VERSION = '1.0.0';
+  var VERSION = '1.1.0';
 
   /* ── 기본값 ───────────────────────────────────────────── */
   var DETECT = {
@@ -809,6 +809,621 @@
     return { ok: true, reason: '', title: title, hook: hook, hashtags: tags, caption: caption };
   }
 
+  /* ══ 자막 → 스토리·재미 구간 추천 ════════════════════════
+     자막 타임코드 + 대사만 보고 숏폼으로 잘라 쓸 구간을 고른다.
+     AI 가 있으면 AI 가, 없으면 아래 규칙(휴리스틱)이 같은 모양으로 답한다.
+     구간마다 '새로 쓴 설명 자막'(commentaryCues)을 함께 만든다 —
+     원본 대사를 그대로 옮기는 것이 아니라 클립 안에서 해석·요약·반전을 짚는 자막이다. */
+  var STORY = {
+    count: 4,
+    countMin: 3,
+    countMax: 6,
+    minSec: 6,
+    maxSec: 20,
+    commentaryMax: 4,
+    commentaryStyle: 'badge',
+    promptChars: 1900
+  };
+
+  var STORY_SIGNAL_WORDS = {
+    question: /\?|(까|나요|죠|을까|ㄹ까)\s*$/,
+    number: /[0-9]|(한|두|세|네|다섯|백|천|만|퍼센트|프로)\s|%/,
+    contrast: /(근데|그런데|하지만|그러나|사실|반대로|아니라|못 |안 )/,
+    emotion: /(진짜|대박|미쳤|충격|놀라|빨라|늦어|힘들|쉽|어렵|무섭|최고|최악|완전|딱)/,
+    reveal: /(포인트|핵심|이유|비결|방법|결국|정답|비밀|바로)/,
+    cta: /(끝|시작|지금|한 번에|구독|저장)/
+  };
+
+  var STORY_TAG_WEIGHT = {
+    question: 1.15, number: 0.8, contrast: 0.72, emotion: 0.85, reveal: 0.6, cta: 0.35
+  };
+
+  var STORY_REASON = {
+    question: '질문으로 열어 끝까지 궁금하게 만드는 구간입니다',
+    number: '숫자가 들어 있어 스크롤을 멈추게 하는 구간입니다',
+    contrast: '앞말을 뒤집는 반전이 있어 잘린 클립에서도 힘이 있습니다',
+    emotion: '감정이 드러나는 한마디가 훅 역할을 합니다',
+    reveal: '핵심을 짚는 대목이라 정보 가치가 큽니다',
+    cta: '마무리 문장이 남아 다음 행동을 부릅니다'
+  };
+
+  /** 데모 VOD 대본 → 자막 큐. 화면·소리·자막이 같은 대본에서 나온다. */
+  function demoCues() {
+    var cues = [];
+    (DEMO.speech || []).forEach(function (sp) {
+      var words = String(sp.line || '').split(' ');
+      var mid = Math.ceil(words.length / 2);
+      var head = words.slice(0, mid).join(' ');
+      var tail = words.slice(mid).join(' ');
+      var cut = sp.startMs + Math.round((sp.endMs - sp.startMs) * 0.52);
+      if (tail) {
+        cues.push({ startMs: sp.startMs, endMs: cut, text: head });
+        cues.push({ startMs: cut + 40, endMs: sp.endMs, text: tail });
+      } else {
+        cues.push({ startMs: sp.startMs, endMs: sp.endMs, text: head });
+      }
+    });
+    return cues;
+  }
+
+  function demoSrt() {
+    return serializeSRT(demoCues());
+  }
+
+  /** 한 구간에 걸친 자막을 한 줄로 — 훅·이유·해설 초안의 재료. */
+  function cueRangeText(cues, startMs, endMs, maxChars) {
+    var parts = [];
+    (cues || []).forEach(function (c) {
+      if (c.endMs <= startMs || c.startMs >= endMs) return;
+      var t = String(c.text || '').replace(/\s+/g, ' ').trim();
+      if (t) parts.push(t);
+    });
+    var joined = parts.join(' ');
+    var limit = Math.max(4, maxChars || 80);
+    if (joined.length > limit) joined = joined.slice(0, limit - 1).trim() + '…';
+    return joined;
+  }
+
+  /**
+   * AI 프롬프트에 넣을 자막을 글자 수 예산 안으로 압축한다.
+   * 예산이 넘으면 앞에서부터 균등 간격으로 솎아 낸다(시간 범위는 유지).
+   */
+  function compactCues(cues, maxChars) {
+    var limit = Math.max(200, maxChars || STORY.promptChars);
+    var list = (cues || []).filter(function (c) { return c && c.text; })
+      .slice().sort(function (a, b) { return a.startMs - b.startMs; });
+    if (!list.length) return { text: '', lines: [], kept: 0, total: 0, step: 1 };
+    function lineFor(c) {
+      var t = String(c.text).replace(/\s+/g, ' ').trim().slice(0, 70);
+      return '[' + (c.startMs / 1000).toFixed(1) + '-' + (c.endMs / 1000).toFixed(1) + '] ' + t;
+    }
+    var step = 1;
+    var lines = list.map(lineFor);
+    var total = lines.join('\n').length;
+    while (total > limit && step < list.length) {
+      step++;
+      lines = list.filter(function (_, i) { return i % step === 0 || i === list.length - 1; }).map(lineFor);
+      total = lines.join('\n').length;
+    }
+    var text = lines.join('\n');
+    if (text.length > limit) text = text.slice(0, limit - 16) + '\n…(자막 일부 생략)';
+    return { text: text, lines: lines, kept: lines.length, total: list.length, step: step };
+  }
+
+  /** AI 에 보낼 스토리 구간 추천 프롬프트. 무료 맛보기 2,000자 제한 안쪽으로 만든다. */
+  function buildStoryPrompt(meta) {
+    var m = meta || {};
+    var cues = m.cues || [];
+    var durMs = m.durationMs || (cues.length ? cues[cues.length - 1].endMs : 0);
+    var count = clamp(Math.round(m.count || STORY.count), STORY.countMin, STORY.countMax);
+    var minSec = m.minSec || STORY.minSec;
+    var maxSec = m.maxSec || STORY.maxSec;
+    var packed = compactCues(cues, (m.promptChars || STORY.promptChars) - 780);
+    var system = '너는 한국어 숏폼 편집자다. 주어진 자막만 근거로 쓰고, 없는 사실·숫자·이름은 만들지 않는다.';
+    var prompt = [
+      '긴 영상 원본을 9:16 숏폼 클립으로 다시 잘라 새 콘텐츠로 만들려고 한다.',
+      '영상 길이: ' + (durMs / 1000).toFixed(1) + '초',
+      '원본 제목: ' + (m.sourceName || '이름 없음'),
+      '원하는 구간 수: ' + count + '개 (3~6개)',
+      '구간 길이: ' + minSec + '~' + maxSec + '초',
+      '',
+      '자막(시작-끝 | 대사):',
+      packed.text,
+      '',
+      '다음 형식의 JSON 배열 하나로만 답해라. 설명·코드펜스·인사말 금지.',
+      '[{"startSec":0,"endSec":8.4,"title":"20자 이내 제목","hook":"첫 2초에 읽을 한 문장(24자 이내)","reason":"왜 스토리·재미·반전 포인트인지 한 줄","hashtags":["태그","태그","태그"],"score":87,"commentaryCues":[{"offsetSec":0,"endOffsetSec":2.4,"text":"상황을 짚는 설명 자막"},{"offsetSec":3.2,"endOffsetSec":6.5,"text":"핵심 포인트 해설"}]}]',
+      '',
+      '규칙:',
+      '- startSec·endSec는 위 자막 시간(초) 안에서 고르고, 구간끼리 겹치지 않는다.',
+      '- title·hook·commentaryCues는 원본 대사를 그대로 베끼지 말고, 시청자가 바로 이해하도록 새로 쓴 해석·설명으로 만든다.',
+      '- commentaryCues는 구간마다 2~4개. offsetSec은 클립 시작 기준 초이며 클립 길이를 넘지 않는다.',
+      '- 첫 해설은 상황 요약, 가운데는 핵심 포인트, 마지막은 한 줄 해석으로 배치한다.'
+    ].join('\n');
+    return { system: system, prompt: prompt, packed: packed, count: count, minSec: minSec, maxSec: maxSec, durationMs: durMs };
+  }
+
+  function pickKey(obj, keys) {
+    if (!obj || typeof obj !== 'object') return null;
+    for (var i = 0; i < keys.length; i++) {
+      var v = obj[keys[i]];
+      if (v !== undefined && v !== null && v !== '') return v;
+    }
+    return null;
+  }
+
+  function numberOrNull(v) {
+    if (v === null || v === undefined || v === '') return null;
+    if (typeof v === 'number') return isFinite(v) ? v : null;
+    var s = String(v).trim();
+    if (/:/.test(s)) { var t = parseTimecode(s); return t === null ? null : t; }
+    var n = Number(s.replace(/,/g, '.').replace(/[^0-9.\-]/g, ''));
+    return isFinite(n) ? n : null;
+  }
+
+  /** 초/밀리초가 섞여 오는 응답을 영상 길이에 맞춰 초로 정리한다. */
+  function secondsOf(v, durMs) {
+    var n = numberOrNull(v);
+    if (n === null) return null;
+    if (n > 3600000) n = n / 1000; // 시간 표기를 초로 읽은 경우
+    /* 영상보다 긴 값인데 ms 로 보이면(1,000 이상) ms 로 읽는다. */
+    if (durMs && n > (durMs / 1000) * 1.08 && n >= 1000 && n <= durMs * 1.05) n = n / 1000;
+    return n;
+  }
+
+  /** 모델이 준 해설 큐를 클립 안 타임라인(ms)으로 정리한다. */
+  function normalizeCommentary(list, durMs) {
+    var out = [];
+    var total = Math.max(1000, durMs || 0);
+    (Array.isArray(list) ? list : []).forEach(function (item) {
+      if (!item) return;
+      if (typeof item === 'string') {
+        var plain = String(item).trim();
+        if (plain) out.push({ startMs: 0, endMs: Math.min(total, 2200), text: plain.slice(0, 80) });
+        return;
+      }
+      var text = pickKey(item, ['text', 'caption', 'line', '문장', '해설', '내용', '자막']);
+      if (text === null) return;
+      text = String(text).replace(/\s+/g, ' ').trim().slice(0, 80);
+      if (!text) return;
+      /* startMs/endMs 는 이미 밀리초, offsetSec/startSec 는 초로 읽는다. */
+      var explicitMs = numberOrNull(pickKey(item, ['startMs', 'offsetMs']));
+      var explicitEndMs = numberOrNull(pickKey(item, ['endMs', 'endOffsetMs']));
+      var off = explicitMs === null
+        ? numberOrNull(pickKey(item, ['offsetSec', 'startSec', 'offset', 'start', '시작', '시작초']))
+        : null;
+      var endOff = explicitEndMs === null
+        ? numberOrNull(pickKey(item, ['endOffsetSec', 'endSec', 'endOffset', 'end', '끝', '끝초']))
+        : null;
+      var startMs;
+      var endMs;
+      if (explicitMs !== null) {
+        startMs = Math.round(clamp(explicitMs, 0, total));
+      } else {
+        if (off === null) off = 0;
+        if (off > total * 1.08 && off <= total * 1.6) off = off / 1000;
+        startMs = Math.round(clamp(off * 1000, 0, total));
+      }
+      if (explicitEndMs !== null) {
+        endMs = Math.round(clamp(explicitEndMs, 0, total));
+      } else {
+        if (endOff === null) endOff = (explicitMs !== null ? explicitMs / 1000 : off) + 2.2;
+        if (endOff > total * 1.08 && endOff <= total * 1.6) endOff = endOff / 1000;
+        endMs = Math.round(clamp(endOff * 1000, 0, total));
+      }
+      if (endMs - startMs < 400) endMs = Math.min(total, startMs + 1800);
+      if (endMs - startMs < 300) return;
+      out.push({ startMs: startMs, endMs: endMs, text: text });
+    });
+    out.sort(function (a, b) { return a.startMs - b.startMs; });
+    /* 겹치는 해설은 뒤엣것을 밀어 겹치지 않게 한다 */
+    for (var i = 1; i < out.length; i++) {
+      if (out[i].startMs < out[i - 1].endMs) out[i].startMs = Math.min(out[i].endMs - 200, out[i - 1].endMs);
+      if (out[i].endMs <= out[i].startMs) out[i].endMs = Math.min(total, out[i].startMs + 800);
+    }
+    return out.slice(0, STORY.commentaryMax);
+  }
+
+  /**
+   * 모델 응답(설명 섞임·코드펜스·한글 키 허용) → 스토리 구간 목록.
+   * @returns {{ok:boolean, reason:string, segments:Array}}
+   */
+  function parseStoryJSON(text, opts) {
+    var o = opts || {};
+    var durMs = Math.max(0, o.durationMs || 0);
+    var minMs = Math.max(1000, Math.round((o.minSec || 3) * 1000));
+    var maxCount = o.maxCount || STORY.countMax;
+    var body = stripFence(text);
+    var raw = null;
+    var arrStart = body.indexOf('[');
+    var arrEnd = body.lastIndexOf(']');
+    if (arrStart >= 0 && arrEnd > arrStart) {
+      try { raw = JSON.parse(body.slice(arrStart, arrEnd + 1).replace(/,\s*([}\]]])/g, '$1')); } catch (e) { raw = null; }
+    }
+    if (!raw) {
+      var s = body.indexOf('{');
+      var e2 = body.lastIndexOf('}');
+      if (s >= 0 && e2 > s) {
+        try { raw = JSON.parse(body.slice(s, e2 + 1).replace(/,\s*([}\]]])/g, '$1')); } catch (e3) { raw = null; }
+      }
+    }
+    if (raw && !Array.isArray(raw)) {
+      var list = pickKey(raw, ['segments', 'clips', '구간', 'items', 'shots', 'result', 'highlights']);
+      raw = Array.isArray(list) ? list : null;
+    }
+    if (!Array.isArray(raw) || !raw.length) return { ok: false, reason: 'not_json', segments: [] };
+
+    var segs = [];
+    raw.forEach(function (item, idx) {
+      if (!item || typeof item !== 'object') return;
+      var explicitStart = numberOrNull(pickKey(item, ['startMs', 'start_ms']));
+      var explicitEnd = numberOrNull(pickKey(item, ['endMs', 'end_ms']));
+      var start = explicitStart !== null ? explicitStart / 1000 : secondsOf(pickKey(item, ['startSec', 'start', '시작초', '시작', 'startTime']), durMs);
+      var end = explicitEnd !== null ? explicitEnd / 1000 : secondsOf(pickKey(item, ['endSec', 'end', '끝초', '끝', 'endTime']), durMs);
+      if (start === null || end === null) return;
+      var startMs = Math.round(start * 1000);
+      var endMs = Math.round(end * 1000);
+      if (durMs) { startMs = clamp(startMs, 0, durMs); endMs = clamp(endMs, 0, durMs); }
+      if (endMs <= startMs) return;
+      if (endMs - startMs < minMs) return;
+      var commentary = normalizeCommentary(
+        pickKey(item, ['commentaryCues', 'commentary', '해설자막', '해설', 'commentCues']),
+        endMs - startMs
+      );
+      var score = numberOrNull(pickKey(item, ['score', '추천도', 'rating']));
+      segs.push({
+        startMs: startMs,
+        endMs: endMs,
+        startSec: round(startMs / 1000, 1),
+        endSec: round(endMs / 1000, 1),
+        durationMs: endMs - startMs,
+        title: String(pickKey(item, ['title', '제목', 'headline']) || '').trim().slice(0, 60),
+        hook: String(pickKey(item, ['hook', '훅', 'firstLine']) || '').trim().slice(0, 90),
+        reason: String(pickKey(item, ['reason', '이유', 'why']) || '').trim().slice(0, 140),
+        hashtags: normalizeTags(pickKey(item, ['hashtags', 'tags', '해시태그']) || []),
+        score: score === null ? Math.max(40, 95 - idx * 7) : Math.round(clamp(score, 1, 99)),
+        commentaryCues: commentary
+      });
+    });
+    if (!segs.length) return { ok: false, reason: 'no_valid_segment', segments: [] };
+    segs.sort(function (a, b) { return a.startMs - b.startMs; });
+    var kept = [];
+    segs.forEach(function (s) {
+      var dup = kept.some(function (k) {
+        var ov = rangeOverlap(k.startMs, k.endMs, s.startMs, s.endMs);
+        return ov > 0.6 * Math.min(k.durationMs, s.durationMs);
+      });
+      if (!dup) kept.push(s);
+    });
+    kept = kept.slice(0, maxCount);
+    kept.forEach(function (s, i) { s.index = i; });
+    return { ok: true, reason: '', segments: kept };
+  }
+
+  /** 대사 한 줄의 신호(질문·숫자·반전·감정·핵심·마무리) */
+  function cueSignals(text) {
+    var t = String(text || '');
+    var hits = [];
+    var score = 0;
+    Object.keys(STORY_SIGNAL_WORDS).forEach(function (tag) {
+      if (STORY_SIGNAL_WORDS[tag].test(t)) {
+        hits.push(tag);
+        score += STORY_TAG_WEIGHT[tag] || 0.3;
+      }
+    });
+    var len = t.replace(/\s/g, '').length;
+    if (len >= 5 && len <= 26) score += 0.3;
+    else if (len < 4) score -= 0.25;
+    return { score: round(score, 3), tags: hits };
+  }
+
+  function shortenText(text, limit) {
+    var s = String(text || '').replace(/\s+/g, ' ').replace(/[.?!,]+$/, '').trim();
+    if (s.length <= limit) return s;
+    var cut = s.slice(0, limit - 1);
+    var sp = cut.lastIndexOf(' ');
+    if (sp > limit * 0.5) cut = cut.slice(0, sp);
+    return cut.trim() + '…';
+  }
+
+  var STORY_STOPWORDS = ['그리고', '그래서', '하지만', '그런데', '이제', '정말', '진짜', '이거', '저거', '그거', '우리', '여기', '거기', '그냥', '다시', '때문', '합니다', '했습니다', '니다'];
+  var KOREAN_PARTICLES = ['으로서', '으로써', '에서는', '에게서', '이라고', '에서는', '에서', '에게', '까지', '부터', '보다', '처럼', '마다', '조차', '밖에', '으로', '로', '은', '는', '이', '가', '을', '를', '의', '에', '도', '와', '과', '만', '랑'];
+
+  /** 낱말 끝의 조사를 떼어 낸다 — 해시태그·해설 초안이 '3개를'처럼 남지 않게. */
+  function stripParticle(word) {
+    var w = String(word || '');
+    for (var i = 0; i < KOREAN_PARTICLES.length; i++) {
+      var p = KOREAN_PARTICLES[i];
+      /* '밖으로' → '밖으' 같은 잘린 꼴을 만들지 않는다 */
+      if (p === '로' && w.slice(-2) === '으로') {
+        if (w.length - 2 >= 2) return w.slice(0, w.length - 2);
+        continue;
+      }
+      if (w.length - p.length >= 2 && w.slice(-p.length) === p) return w.slice(0, w.length - p.length);
+    }
+    return w;
+  }
+
+  function keyPhrases(texts, limit) {
+    var counts = Object.create(null);
+    (texts || []).forEach(function (t) {
+      String(t || '').split(/[^0-9A-Za-z가-힣%]+/).forEach(function (w) {
+        var v = stripParticle(w.replace(/[.?!,]+$/, ''));
+        if (v.length < 2 || STORY_STOPWORDS.indexOf(v) >= 0) return;
+        if (/(요|다|고|까|죠|며|서|면|니|러|게|지|함|됨)$/.test(v)) return;
+        counts[v] = (counts[v] || 0) + 1;
+      });
+    });
+    return Object.keys(counts)
+      .sort(function (a, b) { return (counts[b] - counts[a]) || (b.length - a.length); })
+      .slice(0, limit || 3);
+  }
+
+  /** 로컬 폴백 해설: 자막 구조에서 뽑은 초안. AI 없이도 '새 자막'이 붙는다. */
+  function localCommentary(texts, durMs) {
+    var list = (texts || []).map(function (t) { return String(t || '').trim(); }).filter(Boolean);
+    var total = Math.max(1000, Math.round(durMs || 0));
+    if (!list.length) return [];
+    var lead = list[0];
+    var leadSig = cueSignals(lead);
+    var best = list[0];
+    var bestScore = -1;
+    list.forEach(function (t) {
+      var sg = cueSignals(t);
+      if (sg.score > bestScore) { bestScore = sg.score; best = t; }
+    });
+    var phrases = keyPhrases(list, 4);
+    var out = [];
+    var opener;
+    if (leadSig.tags.indexOf('question') >= 0) opener = '질문 하나로 시작합니다';
+    else if (leadSig.tags.indexOf('number') >= 0) opener = '숫자부터 짚고 갑니다';
+    else if (leadSig.tags.indexOf('contrast') >= 0) opener = '여기서 말이 바뀝니다';
+    else if (leadSig.tags.indexOf('emotion') >= 0) opener = '이 한마디가 핵심입니다';
+    else opener = '상황부터 짚고 갑니다';
+    out.push({ startMs: 0, endMs: Math.round(Math.min(2600, total * 0.34)), text: opener });
+
+    if (total > 5200) {
+      var focus = phrases.length
+        ? '핵심은 "' + shortenText(phrases[0], 12) + '"'
+        : '흐름이 바뀌는 지점입니다';
+      out.push({ startMs: Math.round(total * 0.34), endMs: Math.round(total * 0.64), text: focus });
+    }
+    var closeText = phrases.length
+      ? '한 줄 정리: ' + shortenText(phrases.slice(0, 2).join(' '), 18)
+      : '한 줄 정리: ' + shortenText(list[list.length - 1], 16);
+    out.push({ startMs: Math.round(total * 0.66), endMs: total, text: closeText });
+    return normalizeCommentary(out, total);
+  }
+
+  /**
+   * AI 없이 자막만으로 구간을 고른다(네트워크 실패·한도 초과 폴백).
+   * 질문/숫자/반전/감정/핵심 표현과 발화 밀도·길이 적합도로 점수를 낸다.
+   */
+  function localStorySegments(meta) {
+    var m = meta || {};
+    var cues = (m.cues || []).filter(function (c) { return c && c.text && c.endMs > c.startMs; })
+      .slice().sort(function (a, b) { return a.startMs - b.startMs; });
+    var durMs = m.durationMs || (cues.length ? cues[cues.length - 1].endMs : 0);
+    if (!cues.length || !durMs) return { segments: [], signals: [] };
+    var count = clamp(Math.round(m.count || STORY.count), 1, STORY.countMax);
+    var minMs = Math.max(2000, Math.round((m.minSec || STORY.minSec) * 1000));
+    var maxMs = Math.max(minMs + 1000, Math.round((m.maxSec || STORY.maxSec) * 1000));
+    /* 목표 길이는 '영상 길이 ÷ 원하는 개수'에 맞춘다 — 짧은 영상에서 긴 구간만 남지 않게. */
+    var ideal = clamp((durMs / Math.max(1, count)) * 0.95, minMs, maxMs);
+    var sig = cues.map(function (c) { return cueSignals(c.text); });
+
+    var cands = [];
+    for (var i = 0; i < cues.length; i++) {
+      var best = null;
+      for (var j = i; j < cues.length; j++) {
+        var len = cues[j].endMs - cues[i].startMs;
+        if (len > maxMs) break;
+        if (len < minMs) {
+          if (j < cues.length - 1) continue;
+          if (len < minMs * 0.6) break; /* 꼬리 자투리(최소 길이의 60% 미만)는 구간으로 만들지 않는다 */
+        }
+        var cueMs = 0;
+        var peak = 0;
+        var peakText = cues[i].text;
+        var tags = [];
+        for (var k = i; k <= j; k++) {
+          cueMs += cues[k].endMs - cues[k].startMs;
+          if (sig[k].score > peak) { peak = sig[k].score; peakText = cues[k].text; }
+          sig[k].tags.forEach(function (t) { if (tags.indexOf(t) < 0) tags.push(t); });
+        }
+        var density = clamp(cueMs / Math.max(1, len), 0, 1);
+        var fit = 1 - clamp(Math.abs(len - ideal) / ideal, 0, 1);
+        var reveal = tags.some(function (t) { return t === 'reveal' || t === 'emotion' || t === 'contrast'; }) ? 1 : 0.3;
+        var score = 100 * clamp(
+          0.28 * clamp(peak / 1.6, 0, 1) +
+          0.14 * clamp(sig[i].score / 1.6, 0, 1) +
+          0.16 * density +
+          0.22 * fit +
+          0.20 * reveal, 0, 1);
+        var cand = {
+          startMs: cues[i].startMs,
+          endMs: cues[j].endMs,
+          durationMs: len,
+          score: Math.round(clamp(score, 1, 99)),
+          peakText: peakText,
+          peakTags: tags,
+          leadTags: sig[i].tags,
+          leadText: cues[i].text,
+          texts: cues.slice(i, j + 1).map(function (c) { return c.text; })
+        };
+        if (!best || cand.score > best.score) best = cand;
+      }
+      if (best) cands.push(best);
+    }
+    if (!cands.length) return { segments: [], signals: [] };
+
+    cands.sort(function (a, b) { return b.score - a.score; });
+    var picked = [];
+    cands.forEach(function (c) {
+      if (picked.length >= count) return;
+      var clash = picked.some(function (p) {
+        var ov = rangeOverlap(p.startMs, p.endMs, c.startMs, c.endMs);
+        return ov > 0.22 * Math.min(p.durationMs, c.durationMs);
+      });
+      if (!clash) picked.push(c);
+    });
+    picked.sort(function (a, b) { return a.startMs - b.startMs; });
+
+    return {
+      signals: picked.map(function (c) { return c.peakTags; }),
+      segments: picked.map(function (c, idx) {
+        var tag = c.leadTags.concat(c.peakTags).filter(function (t) { return t !== 'cta'; })[0] || '';
+        var phrases = keyPhrases(c.texts, 4);
+        var tags = normalizeTags(['숏폼'].concat(phrases.slice(0, 3)));
+        return {
+          startMs: c.startMs,
+          endMs: c.endMs,
+          startSec: round(c.startMs / 1000, 1),
+          endSec: round(c.endMs / 1000, 1),
+          durationMs: c.durationMs,
+          title: shortenText(c.peakText, 20),
+          hook: shortenText(c.leadText, 24),
+          reason: STORY_REASON[tag] || '대사 밀도가 높고 앞뒤가 끊기지 않는 구간입니다',
+          hashtags: tags,
+          score: c.score,
+          commentaryCues: localCommentary(c.texts, c.durationMs),
+          index: idx
+        };
+      })
+    };
+  }
+
+  /**
+   * 추천 구간 → 클립(기존 클립과 같은 모양).
+   * 무음이 빠진 keep 구간에 맞춰 ranges 를 다시 계산하므로 렌더·자막 매핑이 그대로 호환된다.
+   */
+  function segmentsToClips(segments, opts) {
+    var o = opts || {};
+    var keep = (o.keep || []).filter(function (s) { return s && s.endMs > s.startMs; });
+    var cues = o.cues || [];
+    var durMs = o.durationMs || 0;
+    var out = [];
+    (segments || []).forEach(function (seg, i) {
+      var s = Math.round(seg.startMs !== undefined && seg.startMs !== null ? seg.startMs : (seg.startSec || 0) * 1000);
+      var e = Math.round(seg.endMs !== undefined && seg.endMs !== null ? seg.endMs : (seg.endSec || 0) * 1000);
+      if (durMs) { s = clamp(s, 0, durMs); e = clamp(e, 0, durMs); }
+      if (e - s < 500) return;
+      var ranges;
+      if (keep.length) {
+        ranges = trimRanges(keep, s, e);
+        if (!ranges.length) return; /* 전부 죽은 초면 클립으로 만들지 않는다 */
+      } else {
+        ranges = [{ startMs: s, endMs: e, durMs: e - s }];
+      }
+      var durationMs = Math.round(totalDuration(ranges));
+      if (durationMs < 400) return;
+      var speechMs = 0;
+      cues.forEach(function (c) { speechMs += rangeOverlap(s, e, c.startMs, c.endMs); });
+      var commentary = normalizeCommentary(seg.commentaryCues || [], durationMs);
+      out.push({
+        id: uid('clip'),
+        index: i,
+        startMs: ranges[0].startMs,
+        endMs: ranges[ranges.length - 1].endMs,
+        durationMs: durationMs,
+        ranges: ranges,
+        score: Math.round(clamp(numberOrNull(seg.score) || 50, 1, 99)),
+        title: String(seg.title || '').slice(0, 60),
+        hook: String(seg.hook || '').slice(0, 90),
+        hashtags: normalizeTags(seg.hashtags || []),
+        selected: true,
+        speechRatio: round(clamp(speechMs / Math.max(1, durationMs), 0, 1), 3),
+        source: 'story',
+        reason: String(seg.reason || '').slice(0, 140),
+        commentaryCues: commentary,
+        commentarySource: o.commentarySource || (commentary.length ? 'ai' : 'local')
+      });
+    });
+    return out;
+  }
+
+  /** 같은 구간을 두 번 담지 않도록 스토리 클립끼리 겹침을 걸러 낸다. */
+  function mergeStoryClips(existing, incoming, opts) {
+    var o = opts || {};
+    var tol = o.overlap === undefined ? 0.5 : o.overlap;
+    var list = (existing || []).slice();
+    var added = [];
+    var skipped = [];
+    (incoming || []).forEach(function (c) {
+      var dup = list.some(function (x) {
+        if (x.source !== 'story' && !o.includeAll) return false;
+        var ov = rangeOverlap(x.startMs, x.endMs, c.startMs, c.endMs);
+        return ov > tol * Math.min(x.durationMs || 1, c.durationMs || 1);
+      });
+      if (dup) { skipped.push(c); return; }
+      list.push(c);
+      added.push(c);
+    });
+    list.sort(function (a, b) { return a.startMs - b.startMs; });
+    list.forEach(function (c, i) { c.index = i; });
+    return { clips: list, added: added, skipped: skipped };
+  }
+
+  /** 스토리 클립과 겹치는 자동·수동 클립은 지우지 않고 선택만 해제한다. */
+  function deselectOverlapping(clips, applied, opts) {
+    var o = opts || {};
+    var ratio = o.overlap === undefined ? 0.4 : o.overlap;
+    var cleared = [];
+    (clips || []).forEach(function (c) {
+      if (c.source === 'story') return;
+      var clash = (applied || []).some(function (s) {
+        var ov = rangeOverlap(c.startMs, c.endMs, s.startMs, s.endMs);
+        return ov > ratio * Math.min(c.durationMs || 1, s.durationMs || 1);
+      });
+      if (clash && c.selected) { c.selected = false; cleared.push(c); }
+    });
+    return cleared;
+  }
+
+  /**
+   * 자막 두 층(대사·해설)이 겹치지 않도록 세로 밴드를 계산한다.
+   * 미리보기와 렌더가 같은 값을 쓴다.
+   */
+  function captionBands(o) {
+    var opt = o || {};
+    var w = opt.w || 1080;
+    var h = opt.h || 1920;
+    var out = { dialogue: null, commentary: null };
+    var dSize = opt.dialogueSize || Math.round(h * 0.06);
+    var dLines = Math.max(1, opt.dialogueLines || 1);
+    var dLh = dSize * (opt.dialogueGap || 1.14);
+    if (opt.dialogueOn !== false) {
+      var dBase = opt.dialoguePos === 'center'
+        ? h * 0.5 - (dLines * dLh) / 2 + dSize * 0.82
+        : h * 0.80 - (dLines - 1) * dLh;
+      out.dialogue = {
+        y0: dBase - dSize * 0.95,
+        y1: dBase + (dLines - 1) * dLh + dSize * 0.22,
+        baseY: dBase, size: dSize, lh: dLh
+      };
+    }
+    var cSize = opt.commentarySize || Math.round(h * 0.042);
+    var cLines = Math.max(1, opt.commentaryLines || 1);
+    var cLh = cSize * 1.24;
+    var blockH = cLines * cLh;
+    var cBase;
+    if (out.dialogue) {
+      /* 해설은 화면 위쪽(훅 자리)에 두고, 대사와는 최소 간격을 둔다. */
+      var ceiling = out.dialogue.y0 - cSize * 0.9;
+      cBase = Math.min(h * 0.44, ceiling) - (cLines - 1) * cLh;
+      if (cBase - cSize * 0.95 < h * 0.14) cBase = h * 0.14 + cSize * 0.95 + (cLines - 1) * cLh;
+      var bottom = cBase + (cLines - 1) * cLh + cSize * 0.22;
+      if (bottom > ceiling) cBase -= (bottom - ceiling);
+    } else {
+      cBase = h * 0.34 - blockH / 2 + cSize * 0.82;
+    }
+    out.commentary = {
+      y0: cBase - cSize * 0.95,
+      y1: cBase + (cLines - 1) * cLh + cSize * 0.22,
+      baseY: cBase, size: cSize, lh: cLh
+    };
+    return out;
+  }
+
   /* ── 파일·검증 ─────────────────────────────────────────── */
   function safeName(text, fallback) {
     var base = String(text || '').trim().replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, '-').slice(0, 48);
@@ -867,6 +1482,7 @@
 
   return {
     VERSION: VERSION,
+    STORY: STORY,
     DETECT: DETECT,
     PRESETS: PRESETS,
     TRACK_MODES: TRACK_MODES,
@@ -924,6 +1540,22 @@
     buildHookPrompt: buildHookPrompt,
     parseHookJSON: parseHookJSON,
     normalizeTags: normalizeTags,
+
+    demoCues: demoCues,
+    demoSrt: demoSrt,
+    cueRangeText: cueRangeText,
+    compactCues: compactCues,
+    buildStoryPrompt: buildStoryPrompt,
+    parseStoryJSON: parseStoryJSON,
+    cueSignals: cueSignals,
+    keyPhrases: keyPhrases,
+    localCommentary: localCommentary,
+    localStorySegments: localStorySegments,
+    segmentsToClips: segmentsToClips,
+    mergeStoryClips: mergeStoryClips,
+    deselectOverlapping: deselectOverlapping,
+    normalizeCommentary: normalizeCommentary,
+    captionBands: captionBands,
 
     safeName: safeName,
     clipFileName: clipFileName,

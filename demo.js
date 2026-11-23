@@ -374,23 +374,10 @@
     };
   }
 
-  /* 데모 자막: 말소리 블록을 반으로 나눠 실제 큐 2개씩 만든다. */
+  /* 데모 자막: 말소리 블록을 반으로 나눠 실제 큐 2개씩 만든다.
+     큐 계획은 core.js 가 들고 있다(자막 파일·스토리 추천과 같은 대본). */
   function demoCues() {
-    var cues = [];
-    PLAN.speech.forEach(function (sp) {
-      var words = sp.line.split(' ');
-      var mid = Math.ceil(words.length / 2);
-      var head = words.slice(0, mid).join(' ');
-      var tail = words.slice(mid).join(' ');
-      var cut = sp.startMs + Math.round((sp.endMs - sp.startMs) * 0.52);
-      if (tail) {
-        cues.push({ startMs: sp.startMs, endMs: cut, text: head });
-        cues.push({ startMs: cut + 40, endMs: sp.endMs, text: tail });
-      } else {
-        cues.push({ startMs: sp.startMs, endMs: sp.endMs, text: head });
-      }
-    });
-    return cues;
+    return C.demoCues();
   }
 
   function build(opts) {

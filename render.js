@@ -119,7 +119,8 @@
 
     var blockH = lines.length * lh;
     var baseY;
-    if (style.pos === 'center') baseY = h * 0.5 - blockH / 2 + fs * 0.82;
+    if (opts.baseY !== undefined) baseY = opts.baseY;
+    else if (style.pos === 'center') baseY = h * 0.5 - blockH / 2 + fs * 0.82;
     else baseY = h * 0.80 - (lines.length - 1) * lh;
 
     if (style.box) {
@@ -160,10 +161,91 @@
     ctx.closePath();
   }
 
+  /* ── AI 해설 자막 (원본 대사와 다른 층) ───────────────── */
+  /**
+   * 클립 위에 얹는 '새 해석' 자막. 대사 자막과 겹치지 않도록 위쪽 밴드에 그린다.
+   * style: 'badge'(어두운 배지 + 라임 바) | 'plain'(외곽선 글자만)
+   */
+  function drawCommentary(ctx, o) {
+    var lines = o.lines && o.lines.length ? o.lines : (o.text ? C.wrapCaption(o.text, 18, 2) : []);
+    if (!lines.length) return;
+    var w = o.w, h = o.h;
+    var band = o.band || null;
+    var fs = Math.round(band ? band.size : h * 0.042);
+    var lh = band ? band.lh : fs * 1.24;
+    var baseY = band ? band.baseY : h * 0.34;
+    var plain = o.style === 'plain';
+    var pad = Math.round(fs * 0.46);
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.font = '700 ' + fs + 'px "PlexKR", "Apple SD Gothic Neo", sans-serif';
+    var widest = 0;
+    lines.forEach(function (l) {
+      var m = ctx.measureText(l).width;
+      if (m > widest) widest = m;
+    });
+    var blockH = (lines.length - 1) * lh + fs * 1.18;
+    if (!plain) {
+      var boxW = Math.min(w * 0.9, widest + pad * 2);
+      var boxX = (w - boxW) / 2;
+      var boxY = baseY - fs * 0.95;
+      ctx.fillStyle = 'rgba(7, 8, 11, 0.74)';
+      rounded(ctx, boxX, boxY, boxW, blockH + pad * 0.5, Math.round(fs * 0.34));
+      ctx.fill();
+      ctx.fillStyle = 'rgba(200, 244, 65, 0.95)';
+      rounded(ctx, boxX + Math.round(fs * 0.16), boxY + Math.round(fs * 0.28), Math.max(3, Math.round(fs * 0.12)), blockH + pad * 0.5 - Math.round(fs * 0.56), 2);
+      ctx.fill();
+    }
+    lines.forEach(function (line, i) {
+      var y = baseY + i * lh;
+      if (plain) {
+        ctx.lineJoin = 'round';
+        ctx.miterLimit = 2;
+        ctx.lineWidth = Math.max(4, Math.round(fs * 0.16));
+        ctx.strokeStyle = 'rgba(4, 5, 7, 0.85)';
+        ctx.strokeText(line, w / 2, y);
+      }
+      ctx.fillStyle = plain ? '#EAFB9A' : '#F6F8FC';
+      ctx.fillText(line, w / 2, y);
+    });
+    ctx.restore();
+  }
+
+  /*
+   * 대사·해설 두 층을 함께 그린다. 밴드 계산은 core.captionBands 하나만 쓴다
+   * → 미리보기와 렌더 결과가 픽셀 단위로 같다.
+   * mode: 'both' | 'commentary' | 'dialogue'
+   */
+  function drawCaptions(ctx, o) {
+    var style = o.style || C.CAPTION_STYLES[0];
+    var mode = o.mode || 'both';
+    var w = o.w, h = o.h;
+    var dCue = (mode !== 'commentary' && o.cues && o.cues.length) ? C.cueAt(o.cues, o.localMs) : null;
+    var cCue = (mode !== 'dialogue' && o.commentary && o.commentary.length) ? C.cueAt(o.commentary, o.localMs) : null;
+    if (!dCue && !cCue) return null;
+    var fs = Math.round(h * style.size);
+    var maxChars = Math.max(6, Math.floor(w / (fs * 0.94)));
+    var dLines = dCue ? C.wrapCaption(dCue.text, maxChars, 2) : [];
+    var cSize = Math.round(h * 0.042);
+    var cMaxChars = Math.max(8, Math.floor(w / (cSize * 0.98)));
+    var cLines = cCue ? C.wrapCaption(cCue.text, cMaxChars, 2) : [];
+    var bands = C.captionBands({
+      w: w, h: h,
+      dialogueOn: dLines.length > 0, dialogueLines: dLines.length || 1,
+      dialogueSize: fs, dialogueGap: style.lineGap, dialoguePos: style.pos,
+      commentaryLines: cLines.length || 1, commentarySize: cSize
+    });
+    if (cLines.length) drawCommentary(ctx, { lines: cLines, w: w, h: h, band: bands.commentary, style: o.commentaryStyle });
+    if (dLines.length) drawCaption(ctx, { text: dCue.text, w: w, h: h, style: style, baseY: bands.dialogue.baseY });
+    return bands;
+  }
+
   /* ── 9:16 프레임 그리기 (미리보기·렌더 공용) ─────────── */
   /**
    * @param {CanvasRenderingContext2D} ctx
-   * @param {object} o {video, clip, track, localMs, outW, outH, mode, zoom, cues, captionOn, style}
+   * @param {object} o {video, clip, track, localMs, outW, outH, mode, zoom, cues, captionOn, style,
+   *                     commentary, captionMode, commentaryStyle}
    */
   function drawFrame(ctx, o) {
     var cw = o.outW, ch = o.outH;
@@ -179,9 +261,12 @@
         ctx.drawImage(o.video, rect.x, rect.y, rect.w, rect.h, 0, 0, cw, ch);
       } catch (e) { /* 한 프레임 실패는 계속 */ }
     }
-    if (o.captionOn !== false && o.cues && o.cues.length) {
-      var cue = C.cueAt(o.cues, localMs);
-      if (cue) drawCaption(ctx, { text: cue.text, w: cw, h: ch, style: o.style });
+    if (o.captionOn !== false && ((o.cues && o.cues.length) || (o.commentary && o.commentary.length))) {
+      drawCaptions(ctx, {
+        w: cw, h: ch, localMs: localMs,
+        cues: o.cues, commentary: o.commentary,
+        mode: o.captionMode || 'both', style: o.style, commentaryStyle: o.commentaryStyle
+      });
     }
     return { rect: rect, centerX: centerX };
   }
@@ -269,7 +354,8 @@
               drawFrame(ctx, {
                 video: video, clip: clip, track: o.track, localMs: localMs,
                 outW: preset.w, outH: preset.h, mode: o.mode || 'subject',
-                zoom: o.zoom || 1, cues: cues, captionOn: o.captionOn !== false, style: style
+                zoom: o.zoom || 1, cues: cues, captionOn: o.captionOn !== false, style: style,
+                commentary: o.commentary, captionMode: o.captionMode, commentaryStyle: o.commentaryStyle
               });
               return videoSource.add(i / fps, 1 / fps);
             }).then(function () {
@@ -351,6 +437,8 @@
     localTimeAt: localTimeAt,
     mapCues: mapCues,
     drawCaption: drawCaption,
+    drawCommentary: drawCommentary,
+    drawCaptions: drawCaptions,
     drawFrame: drawFrame,
     clipAudio: clipAudio,
     renderClip: renderClip,

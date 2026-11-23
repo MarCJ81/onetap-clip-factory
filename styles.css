@@ -614,6 +614,71 @@ input[type="range"]:disabled { opacity: 0.4; cursor: not-allowed; }
 .lg-cut { width: 2px; height: 10px; background: var(--teal); }
 .legend-right { margin-left: auto; }
 
+/* ── 스토리 구간 추천 ─────────────────────────────────── */
+.story-panel .panel-body { padding: 12px; }
+.story-drop {
+  display: flex; align-items: center; gap: 10px; cursor: pointer;
+  border: 1px dashed var(--edge-2); border-radius: 10px; padding: 10px 11px;
+  background: var(--glass); transition: border-color .12s ease, background .12s ease;
+}
+.story-drop:hover, .story-drop:focus-visible { border-color: var(--lime); background: var(--lime-soft); outline: none; }
+.story-drop.is-over { border-color: var(--lime); background: var(--lime-soft); }
+.story-drop .dz-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.story-drop strong { font-size: 12.5px; color: var(--ink); }
+.story-drop small { font-size: 10.5px; color: var(--muted); }
+.story-panel textarea { margin-top: 8px; font-size: 11px; font-family: var(--mono); line-height: 1.5; }
+.story-panel .btn-row { margin-top: 8px; }
+.story-panel .btn-sm { flex: 1; }
+.story-status { font-size: 10.5px; line-height: 1.55; color: var(--muted); margin: 10px 0 0; }
+.story-status.is-ok { color: var(--lime); }
+.story-status.is-warn { color: var(--amber); }
+.story-sub { display: block; margin-top: 4px; font-family: var(--mono); font-size: 9px; letter-spacing: 0.06em; color: var(--muted); }
+.story-panel .field-row { margin-top: 10px; gap: 8px; }
+.story-panel .mini-field span { font-size: 8.5px; }
+.story-fallback { font-size: 10px; line-height: 1.5; color: var(--amber); margin: 10px 0 0; }
+.story-fallback .link-btn { font-size: 10px; }
+.story-actions { display: flex; align-items: center; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.story-actions .btn { flex: 1; font-size: 11px; padding: 7px 8px; }
+.story-result { display: flex; flex-direction: column; gap: 7px; margin-top: 10px; max-height: 420px; overflow-y: auto; }
+.story-loading { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--sub); padding: 10px 2px; }
+.story-spin { width: 13px; height: 13px; border-radius: 50%; border: 2px solid var(--edge-3); border-top-color: var(--lime); animation: spin .7s linear infinite; }
+.story-card {
+  border: 1px solid var(--edge); border-radius: 10px; background: var(--glass);
+  padding: 9px 9px 8px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px;
+  align-items: start; cursor: pointer; transition: border-color .12s ease, background .12s ease;
+}
+.story-card:hover { border-color: var(--edge-3); }
+.story-card.is-on { border-color: rgba(200, 244, 65, 0.42); background: linear-gradient(180deg, var(--lime-soft), var(--glass)); }
+.story-body { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.story-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.story-title { font-size: 12px; font-weight: 700; color: var(--ink); line-height: 1.35; }
+.story-hook { margin: 0; font-size: 10.5px; color: var(--teal); line-height: 1.4; }
+.story-reason { margin: 0; font-size: 10px; color: var(--muted); line-height: 1.45; }
+.story-comm { margin: 0; font-size: 10px; color: var(--sub); line-height: 1.45; border-left: 2px solid var(--lime); padding-left: 6px; }
+.story-add {
+  appearance: none; cursor: pointer; font: inherit; font-size: 10px; font-weight: 700;
+  color: var(--lime-ink); background: var(--lime); border: 1px solid var(--lime);
+  border-radius: 6px; padding: 4px 7px; align-self: start; white-space: nowrap;
+}
+.story-add:hover { background: var(--lime-2); }
+.clip-src {
+  font-family: var(--mono); font-size: 8.5px; letter-spacing: 0.08em;
+  color: var(--teal); background: var(--teal-soft); border-radius: 20px; padding: 1px 6px;
+}
+.clip-comm { font-size: 10px; color: var(--sub); display: flex; align-items: center; gap: 5px; }
+.clip-comm::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--lime); }
+
+/* ── 해설 자막 편집 ───────────────────────────────────── */
+.comm-panel { grid-column: 1 / -1; }
+.comm-style { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.comm-style span { font-family: var(--mono); font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.comm-style select { width: auto; font-size: 11px; padding: 5px 24px 5px 8px; }
+.comm-list { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; max-height: 240px; overflow-y: auto; }
+.comm-row { display: grid; grid-template-columns: 24px 84px 84px minmax(0, 1fr) 24px; gap: 5px; align-items: center; }
+.comm-row input { font-family: var(--mono); font-size: 10.5px; padding: 5px 6px; }
+.comm-row .comm-text { font-family: var(--font); font-size: 11.5px; }
+.comm-row .cue-no { font-family: var(--mono); font-size: 9px; color: var(--muted); text-align: center; }
+
 /* ── 클립 카드 ─────────────────────────────────────────── */
 .clip-strip .panel-body { padding: 10px 12px 12px; }
 .count-pill { font-family: var(--mono); font-size: 10px; background: var(--surface-3); color: var(--sub); padding: 1px 6px; border-radius: 20px; }
@@ -883,6 +948,15 @@ input[type="range"]:disabled { opacity: 0.4; cursor: not-allowed; }
   .transport-tc { min-width: 76px; font-size: 11px; }
   .cue-row { grid-template-columns: 20px 62px 62px minmax(0, 1fr) 20px; }
   .seg-btn { font-size: 10.5px; }
+}
+
+/* 좁은 화면: 자막 줄은 시간 입력을 위, 문장을 아래로 내려 잘리지 않게 */
+@media (max-width: 560px) {
+  .cue-row, .comm-row { grid-template-columns: 22px minmax(0, 1fr) minmax(0, 1fr) 22px; row-gap: 4px; }
+  .cue-row .cue-text, .comm-row .comm-text { grid-column: 1 / -1; grid-row: 2; }
+  .cue-row .cue-del, .comm-row .cue-del { grid-column: 4; grid-row: 1; }
+  .story-card { grid-template-columns: auto minmax(0, 1fr); }
+  .story-add { grid-column: 1 / -1; justify-self: end; }
 }
 
 /* ── 애니메이션 최소화 ────────────────────────────────── */

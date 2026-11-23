@@ -49,7 +49,11 @@
     cueCache: {},
     cap: null,
     dirty: true,
-    lastFrame: 0
+    lastFrame: 0,
+    captionMode: 'both',
+    commentaryStyle: 'badge',
+    story: { segments: [], busy: false, source: '', note: '', why: '' },
+    thumbing: false
   };
 
   /* ── 작은 도구 ─────────────────────────────────────────── */
@@ -127,6 +131,10 @@
         renderCaption: $('#tg-render-caption') ? $('#tg-render-caption').checked : true,
         safe: $('#tg-safe') ? $('#tg-safe').checked : true,
         loop: $('#tg-loop') ? $('#tg-loop').checked : true,
+        captionMode: state.captionMode,
+        commentaryStyle: state.commentaryStyle,
+        storyCount: $('#sel-story-count') ? $('#sel-story-count').value : '4',
+        storyLen: $('#sel-story-len') ? $('#sel-story-len').value : 'normal',
         detect: currentDetect()
       }));
     } catch (e) { /* 저장 실패는 조용히 */ }
@@ -145,6 +153,10 @@
     if (typeof p.renderCaption === 'boolean' && $('#tg-render-caption')) $('#tg-render-caption').checked = p.renderCaption;
     if (typeof p.safe === 'boolean' && $('#tg-safe')) $('#tg-safe').checked = p.safe;
     if (typeof p.loop === 'boolean' && $('#tg-loop')) $('#tg-loop').checked = p.loop;
+    if (p.captionMode && ['both', 'commentary', 'dialogue'].indexOf(p.captionMode) >= 0) state.captionMode = p.captionMode;
+    if (p.commentaryStyle && ['badge', 'plain'].indexOf(p.commentaryStyle) >= 0) state.commentaryStyle = p.commentaryStyle;
+    if (p.storyCount && $('#sel-story-count')) $('#sel-story-count').value = String(p.storyCount);
+    if (p.storyLen && $('#sel-story-len')) $('#sel-story-len').value = String(p.storyLen);
     if (p.detect) {
       var d = p.detect;
       if (typeof d.silenceDb === 'number') $('#rg-silence').value = d.silenceDb;
@@ -181,8 +193,7 @@
     if (b) b.setAttribute('aria-label', dark ? '라이트 모드로 전환' : '다크 모드로 전환');
   }
 
-  function syncSeg() {
-    $$('#track-modes .seg-btn').forEach(function (b) {
+  function syncSeg() {    $$('#track-modes .seg-btn').forEach(function (b) {
       var active = b.dataset.mode === state.mode;
       b.classList.toggle('is-active', active);
       b.setAttribute('aria-checked', active ? 'true' : 'false');
@@ -195,6 +206,24 @@
     }
     var chip = $('#out-mode');
     if (chip) chip.textContent = state.mode === 'subject' ? '피사체 추적' : state.mode === 'motion' ? '움직임 추적' : '중앙 고정';
+  }
+
+  function syncCaptionMode() {
+    $$('#caption-modes .seg-btn').forEach(function (b) {
+      var active = b.dataset.cmode === state.captionMode;
+      b.classList.toggle('is-active', active);
+      b.setAttribute('aria-checked', active ? 'true' : 'false');
+    });
+    var note = $('#caption-mode-note');
+    if (note) {
+      note.textContent = state.captionMode === 'both'
+        ? '해설 자막은 위, 원본 대사는 아래 — 두 층이 겹치지 않게 따로 그립니다.'
+        : state.captionMode === 'commentary'
+          ? '원본 대사 없이 해설만 얹습니다. 같은 장면이 새 해석의 콘텐츠가 됩니다.'
+          : '원본 대사만 굽습니다. 해설 자막은 넣지 않습니다.';
+    }
+    var sel = $('#sel-comm-style');
+    if (sel) sel.value = state.commentaryStyle;
   }
 
   /* ── 탭 ────────────────────────────────────────────────── */
@@ -648,6 +677,7 @@
       var main = el('div', { class: 'clip-main' });
       var top = el('div', { class: 'clip-top' }, [
         el('span', { class: 'clip-index', text: 'CLIP ' + ('0' + (i + 1)).slice(-2) }),
+        clip.source === 'story' ? el('span', { class: 'clip-src', text: 'STORY' }) : null,
         el('span', { class: 'clip-dur', text: (clip.durationMs / 1000).toFixed(1) + '초' }),
         el('span', { class: 'clip-range', text: C.clock(clip.startMs) + ' → ' + C.clock(clip.endMs) }),
         el('span', { class: 'clip-score' }, [
@@ -688,6 +718,12 @@
       main.appendChild(mediaRow);
       if (clip.rendered) {
         main.appendChild(el('span', { class: 'clip-render-status done', text: 'MP4 ' + C.bytes(clip.rendered.size) + ' · ' + (clip.rendered.encodeMs / 1000).toFixed(1) + '초 만에 완료' }));
+      }
+      if (clip.commentaryCues && clip.commentaryCues.length) {
+        main.appendChild(el('span', {
+          class: 'clip-comm',
+          text: '해설 자막 ' + clip.commentaryCues.length + '줄 · ' + (clip.commentarySource === 'ai' ? 'AI' : '자막 초안')
+        }));
       }
 
       var actions = el('div', { class: 'clip-actions' });
@@ -744,6 +780,7 @@
     try { v.currentTime = R.sourceTimeAt(clip, 0) / 1000; } catch (e) { /* noop */ }
     renderClips();
     drawPreview(true);
+    renderCommentary();
     startPlayback();
   }
 
@@ -930,6 +967,9 @@
       mode: state.mode,
       zoom: state.zoom,
       cues: currentCues(clip.id === 'source' ? null : clip),
+      commentary: currentCommentary(clip.id === 'source' ? null : clip),
+      captionMode: state.captionMode,
+      commentaryStyle: state.commentaryStyle,
       captionOn: $('#tg-captions').checked,
       style: style
     });
@@ -1089,6 +1129,8 @@
       mode: state.mode,
       zoom: state.zoom,
       style: C.CAPTION_STYLES.filter(function (s) { return s.id === state.styleId; })[0] || C.CAPTION_STYLES[0],
+      captionMode: state.captionMode,
+      commentaryStyle: state.commentaryStyle,
       cues: state.cues
     };
   }
@@ -1157,6 +1199,9 @@
         zoom: opts.zoom,
         style: opts.style,
         cues: cues,
+        commentary: opts.captionMode === 'dialogue' ? [] : ensureCommentary(clip),
+        captionMode: opts.captionMode,
+        commentaryStyle: opts.commentaryStyle,
         signal: signal,
         onProgress: function (p) {
           q.progress = p.progress;
@@ -1215,6 +1260,7 @@
     state.cueCache = {};
     renderCues();
     drawPreview(true);
+    updateStoryControls();
     var status = $('#cue-status');
     if (status) status.textContent = note || (state.cues.length + ' 큐');
     var textarea = $('#cue-srt');
@@ -1287,6 +1333,391 @@
       }
       log('자막 불러오기: ' + file.name + ' · ' + parsed.cues.length + '큐 · ' + parsed.format.toUpperCase());
     });
+  }
+
+  /* ── 자막 → 스토리 구간 · AI 해설 자막 ────────────────── */
+  var STORY_LEN = {
+    short: { minSec: 4, maxSec: 10 },
+    normal: { minSec: 6, maxSec: 20 },
+    long: { minSec: 10, maxSec: 30 }
+  };
+
+  function storyOptions() {
+    var countEl = $('#sel-story-count');
+    var lenEl = $('#sel-story-len');
+    var range = STORY_LEN[(lenEl && lenEl.value) || 'normal'] || STORY_LEN.normal;
+    return {
+      count: Math.max(3, Math.min(6, Number((countEl && countEl.value) || 4))),
+      minSec: range.minSec,
+      maxSec: range.maxSec
+    };
+  }
+
+  function storyDurationMs() {
+    if (state.source) return state.source.durationMs;
+    return state.cues.length ? state.cues[state.cues.length - 1].endMs : 0;
+  }
+
+  function updateStoryControls() {
+    var run = $('#btn-story-run');
+    var n = state.cues.length;
+    if (run) {
+      run.disabled = !n || state.story.busy;
+      run.textContent = state.story.busy ? '자막을 읽는 중…' : (n ? 'AI 스토리 구간 찾기 · 자막 ' + n + '줄' : 'AI 스토리 구간 찾기');
+    }
+    var sub = $('#story-sub-state');
+    if (sub) {
+      sub.textContent = n
+        ? C.clock(state.cues[state.cues.length - 1].endMs) + '까지 ' + n + '줄'
+        : '자막 없음';
+    }
+  }
+
+  function setStoryStatus(text, kind) {
+    var node = $('#story-status');
+    if (!node) return;
+    node.textContent = text;
+    node.className = 'story-status' + (kind ? ' is-' + kind : '');
+  }
+
+  /** 클립에 해설 자막이 없으면 자막 구조로 초안을 만든다(렌더·미리보기 공통). */
+  function ensureCommentary(clip) {
+    if (!clip) return [];
+    if (clip.commentaryCues && clip.commentaryCues.length) return clip.commentaryCues;
+    var texts = R.mapCues(clip, state.cues).map(function (c) { return c.text; });
+    if (!texts.length) {
+      texts = [clip.title || clip.hook || ''].filter(function (t) { return !!t; });
+    }
+    if (!texts.length) return [];
+    clip.commentaryCues = C.localCommentary(texts, clip.durationMs);
+    clip.commentarySource = 'local';
+    return clip.commentaryCues;
+  }
+
+  function currentCommentary(clip) {
+    if (!clip || clip.id === 'source') return [];
+    if (state.captionMode === 'dialogue') return [];
+    return ensureCommentary(clip);
+  }
+
+  function renderStory() {
+    var host = $('#story-result');
+    if (!host) return;
+    host.innerHTML = '';
+    var acts = $('#story-actions');
+    var segs = state.story.segments || [];
+    if (acts) acts.hidden = !segs.length;
+    if (state.story.busy) {
+      host.appendChild(el('div', { class: 'story-loading' }, [
+        el('i', { class: 'story-spin', 'aria-hidden': 'true' }),
+        el('span', { text: state.story.note || '자막을 읽고 스토리 구간을 고르는 중…' })
+      ]));
+      return;
+    }
+    if (!segs.length) {
+      host.appendChild(el('div', { class: 'empty-state small' }, [
+        el('p', { text: '자막을 넣고 위 버튼을 누르면 스토리·재미·반전 구간을 골라 줍니다.' })
+      ]));
+      return;
+    }
+    var chosen = segs.filter(function (s) { return s.selected !== false; }).length;
+    var applyBtn = $('#btn-story-apply-all');
+    if (applyBtn) applyBtn.textContent = '추천 ' + chosen + '개 클립으로 담기';
+    segs.forEach(function (seg, i) {
+      var on_ = seg.selected !== false;
+      var card = el('div', { class: 'story-card' + (on_ ? ' is-on' : ''), dataset: { seg: String(i) } });
+      var check = el('button', {
+        type: 'button', class: 'clip-check', role: 'checkbox',
+        'aria-checked': on_ ? 'true' : 'false', 'aria-label': '추천 구간 ' + (i + 1) + ' 선택'
+      });
+      on(check, 'click', function (e) {
+        e.stopPropagation();
+        seg.selected = !on_;
+        renderStory();
+      });
+      var body = el('div', { class: 'story-body' });
+      body.appendChild(el('div', { class: 'story-top' }, [
+        el('span', { class: 'clip-index', text: 'SEG ' + ('0' + (i + 1)).slice(-2) }),
+        el('span', { class: 'clip-dur', text: ((seg.endMs - seg.startMs) / 1000).toFixed(1) + '초' }),
+        el('span', { class: 'clip-range', text: C.clock(seg.startMs) + ' → ' + C.clock(seg.endMs) }),
+        el('span', { class: 'clip-score' }, [
+          el('i', {}, [el('b', { style: { width: (seg.score || 0) + '%' } })]),
+          String(seg.score || 0)
+        ])
+      ]));
+      body.appendChild(el('strong', { class: 'story-title', text: seg.title || '제목 없음' }));
+      if (seg.hook) body.appendChild(el('p', { class: 'story-hook', text: '훅 · ' + seg.hook }));
+      if (seg.reason) body.appendChild(el('p', { class: 'story-reason', text: seg.reason }));
+      if (seg.commentaryCues && seg.commentaryCues.length) {
+        body.appendChild(el('p', { class: 'story-comm', text: '해설 ' + seg.commentaryCues.length + '줄 · ' + seg.commentaryCues[0].text }));
+      }
+      if (seg.hashtags && seg.hashtags.length) {
+        body.appendChild(el('div', { class: 'clip-tags' }, seg.hashtags.map(function (t) {
+          return el('span', { class: 'clip-tag', text: '#' + t });
+        })));
+      }
+      var add = el('button', { type: 'button', class: 'story-add', text: '담기', 'aria-label': '추천 구간 ' + (i + 1) + ' 클립으로 담기' });
+      on(add, 'click', function (e) { e.stopPropagation(); applyStorySegments([seg]); });
+      card.appendChild(check);
+      card.appendChild(body);
+      card.appendChild(add);
+      on(card, 'click', function (e) {
+        if (e.target.closest('button')) return;
+        previewStory(seg);
+      });
+      host.appendChild(card);
+    });
+  }
+
+  function previewStory(seg) {
+    if (!state.source || !seg) return;
+    state.playMode = 'source';
+    var v = state.source.video;
+    v.muted = false;
+    try { v.currentTime = Math.max(0, seg.startMs) / 1000; } catch (e) { /* noop */ }
+    state.localMs = seg.startMs;
+    state.dirty = true;
+    renderClips();
+    drawPreview(true);
+    updateClock();
+    startPlayback();
+  }
+
+  function setStorySegments(segments, source, provider, why) {
+    state.story.segments = (segments || []).map(function (s, i) {
+      var next = Object.assign({}, s);
+      next.index = i;
+      next.selected = true;
+      return next;
+    });
+    state.story.source = source || 'local';
+    state.story.why = why || '';
+    state.story.busy = false;
+    var tag = $('#story-tag');
+    if (tag) tag.textContent = source === 'pro' ? 'AI · ' + (provider || 'Pro') : source === 'free' ? 'AI · 무료' : '로컬 규칙';
+    var count = state.story.segments.length;
+    if (count) {
+      var label = source === 'pro' ? 'AI(' + (provider || 'Pro') + ')' : source === 'free' ? '무료 AI 맛보기' : '로컬 규칙(자막 휴리스틱)';
+      var comm = state.story.segments.filter(function (s) { return s.commentaryCues && s.commentaryCues.length; }).length;
+      setStoryStatus('추천 ' + count + '개 · ' + label + ' · 해설 자막 ' + comm + '개 구간' + (why ? ' · ' + why : ''), source === 'local' ? 'warn' : 'ok');
+    } else {
+      setStoryStatus((why ? why + ' — ' : '') + '추천 구간을 찾지 못했습니다. 자막이 있는지 확인해 주세요.', 'warn');
+    }
+    var fallback = $('#story-fallback');
+    if (fallback) fallback.hidden = state.story.source !== 'local';
+    renderStory();
+    updateStoryControls();
+  }
+
+  function localStoryFallback(durMs, opt, why) {
+    var local = C.localStorySegments({
+      cues: state.cues, durationMs: durMs,
+      count: opt.count, minSec: opt.minSec, maxSec: opt.maxSec
+    });
+    setStorySegments(local.segments, 'local', '', why);
+    return local;
+  }
+
+  function runStory() {
+    if (state.story.busy) return;
+    if (!state.cues.length) { toast('먼저 자막(.srt/.vtt)을 넣어 주세요.', 'warn'); return; }
+    var durMs = storyDurationMs();
+    if (!durMs) { toast('자막 시간이나 원본 영상이 필요합니다.', 'warn'); return; }
+    var opt = storyOptions();
+    var built = C.buildStoryPrompt({
+      cues: state.cues, durationMs: durMs,
+      sourceName: state.source ? state.source.name : '자막만',
+      count: opt.count, minSec: opt.minSec, maxSec: opt.maxSec
+    });
+    state.story.busy = true;
+    state.story.note = '자막 ' + state.cues.length + '줄을 읽고 ' + opt.count + '개 구간을 고르는 중…';
+    state.story.segments = [];
+    renderStory();
+    updateStoryControls();
+    setStoryStatus('구간을 고르는 중…', '');
+    log('스토리 구간 추천 · 자막 ' + state.cues.length + '줄 · ' + opt.minSec + '~' + opt.maxSec + '초 · ' + opt.count + '개', 'key');
+
+    var request = { task: 'text', prompt: built.prompt, system: built.system, options: { json: true, maxTokens: 900 } };
+    var usePro = Pro && typeof Pro.isConnected === 'function' && Pro.isConnected();
+    function viaFree() {
+      if (Free && typeof Free.generate === 'function') {
+        return Free.generate(request).then(function (res) {
+          if (res && res.ok) return { ok: true, text: res.text, mode: 'free', res: res };
+          return { ok: false, mode: 'free', res: res };
+        });
+      }
+      if (Pro && typeof Pro.generateFree === 'function') {
+        return Promise.resolve(Pro.generateFree(request, { app: 'clip-factory' })).then(function (res) {
+          if (res && res.ok) return { ok: true, text: res.text, mode: 'free', res: res };
+          return { ok: false, mode: 'free', res: res };
+        });
+      }
+      return Promise.resolve({ ok: false, mode: 'none', res: { reason: 'no_client', message: '무료 AI 클라이언트를 찾지 못했습니다.' } });
+    }
+    var task = usePro
+      ? Promise.resolve(Pro.generate(request)).then(function (res) {
+        if (res && res.ok) return { ok: true, text: res.text, mode: 'pro', provider: res.provider, res: res };
+        if (res && res.reason === 'not_connected') return viaFree();
+        return { ok: false, mode: 'pro', res: res };
+      })
+      : viaFree();
+
+    task.then(function (out) {
+      if (!out.ok) {
+        var why = (out.res && (out.res.message || out.res.reason)) || 'AI 응답 없음';
+        var isQuota = out.res && /429|quota|한도|소진/.test(String(out.res.reason || '') + String(out.res.message || ''));
+        localStoryFallback(durMs, opt, (isQuota ? '무료 AI 한도 초과' : 'AI 실패') + ' → 자막 규칙으로 추천');
+        log('스토리 추천 AI 실패 → 로컬 규칙: ' + why, 'warn');
+        toast('AI 대신 자막 규칙으로 추천했습니다. 문장은 직접 다듬어 주세요.', 'warn');
+        renderAll();
+        return;
+      }
+      var parsed = C.parseStoryJSON(out.text, { durationMs: durMs, minSec: 3, maxCount: 6 });
+      if (parsed.ok) {
+        setStorySegments(parsed.segments, out.mode, out.provider, '');
+        log('스토리 추천 완료 · ' + parsed.segments.length + '개 · ' + (out.mode === 'pro' ? 'Pro' : '무료 AI'), 'key');
+        toast('추천 구간 ' + parsed.segments.length + '개를 만들었습니다. 카드에서 담아 보세요.', '');
+        renderAll();
+        return;
+      }
+      localStoryFallback(durMs, opt, 'AI 응답을 읽지 못함 → 자막 규칙으로 추천');
+      log('스토리 응답 형식 오류 → 로컬 규칙: ' + String(out.text || '').slice(0, 80), 'warn');
+      renderAll();
+    }).catch(function (err) {
+      localStoryFallback(durMs, opt, '네트워크 오류 → 자막 규칙으로 추천');
+      log('스토리 추천 오류: ' + ((err && err.message) || err), 'error');
+      renderAll();
+    });
+  }
+
+  function applyStorySegments(list) {
+    if (!state.source) {
+      toast('클립으로 담으려면 원본 영상이 있어야 합니다. 데모 VOD를 먼저 만들어 주세요.', 'warn');
+      return;
+    }
+    var chosen = (list || state.story.segments || []).filter(function (s) { return s.selected !== false; });
+    if (!chosen.length) { toast('담을 구간을 선택해 주세요.', 'warn'); return; }
+    var keep = (state.analysis && state.analysis.keep && state.analysis.keep.length)
+      ? state.analysis.keep
+      : [{ startMs: 0, endMs: state.source.durationMs }];
+    var drafts = C.segmentsToClips(chosen, {
+      keep: keep, cues: state.cues, durationMs: state.source.durationMs,
+      commentarySource: state.story.source === 'local' ? 'local' : 'ai'
+    });
+    if (!drafts.length) {
+      toast('선택한 구간에 남길 말소리가 없습니다. 무음 임계치를 확인해 주세요.', 'warn');
+      return;
+    }
+    var merged = C.mergeStoryClips(state.clips, drafts);
+    state.clips = merged.clips;
+    state.clips.forEach(function (c, i) { c.index = i; });
+    if (merged.added.length) {
+      state.activeClipId = merged.added[0].id;
+      state.playMode = 'clip';
+      state.localMs = 0;
+    }
+    var cleared = C.deselectOverlapping(state.clips, merged.added);
+    if (cleared.length) log('추천 구간과 겹치는 기존 클립 ' + cleared.length + '개의 선택을 해제했습니다(삭제는 안 함).', 'warn');
+    syncQueueWithSelection();
+    renderAll();
+    attachThumbs();
+    renderCommentary();
+    var comm = merged.added.reduce(function (a, c) { return a + ((c.commentaryCues || []).length); }, 0);
+    var msg = '추천 구간 ' + merged.added.length + '개를 클립으로 담았습니다' +
+      (comm ? ' · 해설 자막 ' + comm + '줄' : '') +
+      (merged.skipped.length ? ' · ' + merged.skipped.length + '개는 이미 있음' : '') +
+      (cleared.length ? ' · 겹친 기존 클립 ' + cleared.length + '개 선택 해제' : '');
+    log(msg, 'key');
+    toast(msg, '');
+  }
+
+  function loadStoryText(text, label) {
+    var parsed = C.parseSubtitles(text);
+    if (!parsed.cues.length) {
+      toast('자막을 읽지 못했습니다. SRT·VTT 형식인지 확인해 주세요.', 'warn');
+      return false;
+    }
+    setCues(parsed.cues, parsed.cues.length + ' 큐 · ' + String(parsed.format || 'srt').toUpperCase());
+    if (parsed.warnings.length) {
+      log('자막 경고 ' + parsed.warnings.length + '건: ' + parsed.warnings[0], 'warn');
+    }
+    log('스토리용 자막 불러오기: ' + label + ' · ' + parsed.cues.length + '줄 · ' + String(parsed.format || 'srt').toUpperCase());
+    toast('자막 ' + parsed.cues.length + '줄을 읽었습니다. AI 스토리 구간 찾기를 눌러 보세요.', '');
+    return true;
+  }
+
+  /* ── 해설 자막 편집(클립 시트) ────────────────────────── */
+  function renderCommentary() {
+    var host = $('#comm-list');
+    if (!host) return;
+    host.innerHTML = '';
+    var clip = activeClip();
+    var head = $('#comm-clip');
+    var countEl = $('#comm-count');
+    if (!clip) {
+      if (head) head.textContent = '클립 없음';
+      if (countEl) countEl.textContent = '0 큐';
+      host.appendChild(el('div', { class: 'empty-state small' }, [el('p', { text: '먼저 클립을 만드세요.' })]));
+      return;
+    }
+    if (head) head.textContent = 'CLIP ' + ('0' + (state.clips.indexOf(clip) + 1)).slice(-2) + ' · ' + (clip.title || '제목 없음');
+    var cues = ensureCommentary(clip);
+    if (!cues.length) {
+      if (countEl) countEl.textContent = '0 큐';
+      host.appendChild(el('div', { class: 'empty-state small' }, [el('p', { text: '이 클립에는 자막이 없어 해설 초안을 만들 수 없습니다. 자막을 올리면 자동으로 생깁니다.' })]));
+      return;
+    }
+    cues.forEach(function (cue, i) {
+      var row = el('div', { class: 'comm-row' });
+      var start = el('input', { type: 'text', value: C.vttTime(cue.startMs).slice(3), 'aria-label': '해설 ' + (i + 1) + ' 시작' });
+      var end = el('input', { type: 'text', value: C.vttTime(cue.endMs).slice(3), 'aria-label': '해설 ' + (i + 1) + ' 끝' });
+      var text = el('input', { type: 'text', class: 'comm-text', value: cue.text, maxlength: '80', 'aria-label': '해설 ' + (i + 1) + ' 문장' });
+      function applyTime(input, key) {
+        var ms = C.parseTimecode(input.value);
+        if (ms === null) { input.style.borderColor = 'var(--danger)'; return; }
+        input.style.borderColor = '';
+        cue[key] = Math.round(Math.max(0, Math.min(clip.durationMs, ms)));
+        if (cue.endMs <= cue.startMs + 300) cue.endMs = Math.min(clip.durationMs, cue.startMs + 1200);
+        state.cueCache = {};
+        renderCommentary();
+        drawPreview(true);
+      }
+      on(start, 'change', function () { applyTime(start, 'startMs'); });
+      on(end, 'change', function () { applyTime(end, 'endMs'); });
+      on(text, 'input', function () {
+        cue.text = text.value;
+        clip.commentarySource = clip.commentarySource || 'local';
+        drawPreview(true);
+      });
+      row.appendChild(el('span', { class: 'cue-no', text: String(i + 1) }));
+      row.appendChild(start);
+      row.appendChild(end);
+      row.appendChild(text);
+      row.appendChild(el('button', {
+        type: 'button', class: 'cue-del', text: '×', 'aria-label': '해설 ' + (i + 1) + ' 삭제',
+        onclick: function () {
+          cues.splice(i, 1);
+          renderCommentary();
+          drawPreview(true);
+          log('해설 자막 삭제 · 클립 ' + (state.clips.indexOf(clip) + 1), 'warn');
+        }
+      }));
+      host.appendChild(row);
+    });
+    if (countEl) countEl.textContent = cues.length + ' 큐';
+  }
+
+  function regenerateCommentary() {
+    var clip = activeClip();
+    if (!clip) return;
+    var texts = R.mapCues(clip, state.cues).map(function (c) { return c.text; });
+    if (!texts.length) { toast('이 클립에는 자막이 없습니다.', 'warn'); return; }
+    clip.commentaryCues = C.localCommentary(texts, clip.durationMs);
+    clip.commentarySource = 'local';
+    renderCommentary();
+    drawPreview(true);
+    log('해설 자막 초안 다시 만듦 · ' + clip.commentaryCues.length + '줄', '');
+    toast('해설 자막 초안을 다시 만들었습니다.', '');
   }
 
   /* ── AI 훅 ─────────────────────────────────────────────── */
@@ -1479,6 +1910,8 @@
     renderTimeline();
     renderStats();
     renderCues();
+    renderCommentary();
+    renderSheet();
     drawPreview(true);
     $('#src-tc').textContent = C.timecode(state.source ? state.source.video.currentTime * 1000 : 0, 30);
     if (state.source) {
@@ -1538,14 +1971,22 @@
     on($('#btn-demo-hero'), 'click', buildDemo);
     on($('#btn-copy-cmd'), 'click', function () {
       var url = ($('#yt-url').value || '').trim() || 'https://www.youtube.com/watch?v=...';
-      var cmd = 'yt-dlp -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]" "' + url + '"';
+      var cmd = ytCommand(url);
       var cmdBox = $('#yt-cmd');
       cmdBox.textContent = cmd;
-      var done = function () { toast('명령을 복사했습니다. 터미널에 붙여 넣으세요.', ''); };
+      var done = function () { toast('영상+자막 명령을 복사했습니다. 터미널에 붙여 넣으세요.', ''); };
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(cmd).then(done).catch(function () { fallbackCopy(cmd, done); });
       } else fallbackCopy(cmd, done);
     });
+  }
+
+  /** 유튜브 링크 하나로 영상과 자막(.srt)을 같이 받는 명령 */
+  function ytCommand(url) {
+    var u = (url || 'https://www.youtube.com/watch?v=...').trim();
+    return 'yt-dlp -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]" ' +
+      '--write-subs --write-auto-subs --sub-langs "ko.*,en.*" --convert-subs srt ' +
+      '-o "%(title)s.%(ext)s" "' + u + '"';
   }
 
   function fallbackCopy(text, done) {
@@ -1671,6 +2112,15 @@
       grid.appendChild(card);
     });
     on($('#tg-captions'), 'change', function () { savePrefs(); drawPreview(true); });
+    $$('#caption-modes .seg-btn').forEach(function (b) {
+      on(b, 'click', function () {
+        state.captionMode = b.dataset.cmode || 'both';
+        syncCaptionMode();
+        savePrefs();
+        drawPreview(true);
+        log('자막 모드: ' + (state.captionMode === 'both' ? '해설+대사' : state.captionMode === 'commentary' ? '해설만' : '대사만'), '');
+      });
+    });
     on($('#tg-render-caption'), 'change', savePrefs);
     on($('#btn-srt-open'), 'click', function () { $('#srt-input').click(); });
     on($('#srt-input'), 'change', function () {
@@ -1685,6 +2135,77 @@
     }
     on($('#btn-demo-srt'), 'click', loadDemoCues);
     on($('#btn-cue-demo'), 'click', loadDemoCues);
+  }
+
+  function wireStory() {
+    var input = $('#story-file');
+    var drop = $('#story-drop');
+    if (drop) {
+      on(drop, 'click', function () { if (input) input.click(); });
+      on(drop, 'keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (input) input.click(); }
+      });
+      ['dragenter', 'dragover'].forEach(function (ev) {
+        on(drop, ev, function (e) { e.preventDefault(); drop.classList.add('is-over'); });
+      });
+      ['dragleave', 'drop'].forEach(function (ev) {
+        on(drop, ev, function (e) { e.preventDefault(); drop.classList.remove('is-over'); });
+      });
+      on(drop, 'drop', function (e) {
+        var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (f && f.text) f.text().then(function (t) { loadStoryText(t, f.name); });
+      });
+    }
+    on(input, 'change', function () {
+      var f = input.files && input.files[0];
+      if (f) f.text().then(function (t) { loadStoryText(t, f.name); });
+      input.value = '';
+    });
+    on($('#btn-story-text'), 'click', function () {
+      var ta = $('#story-text');
+      var text = (ta && ta.value ? ta.value : '').trim();
+      if (!text) { toast('붙여넣은 자막이 없습니다.', 'warn'); return; }
+      if (loadStoryText(text, '붙여넣기')) ta.value = '';
+    });
+    on($('#btn-story-demo'), 'click', function () {
+      loadStoryText(C.demoSrt(), '데모 자막');
+      log('데모 자막(SRT)을 읽었습니다. 32초 데모 흐름과 같은 시간입니다.', 'key');
+    });
+    on($('#btn-story-run'), 'click', runStory);
+    on($('#btn-story-apply-all'), 'click', function () { applyStorySegments(); });
+    on($('#btn-story-clear'), 'click', function () {
+      state.story = { segments: [], busy: false, source: '', note: '', why: '' };
+      renderStory();
+      updateStoryControls();
+      setStoryStatus('자막을 넣고 AI 스토리 구간 찾기를 눌러 보세요.', '');
+    });
+    on($('#btn-story-pro'), 'click', openPro);
+    ['#sel-story-count', '#sel-story-len'].forEach(function (sel) { on($(sel), 'change', savePrefs); });
+    renderStory();
+    updateStoryControls();
+  }
+
+  function wireCommentary() {
+    on($('#btn-comm-add'), 'click', function () {
+      var clip = activeClip();
+      if (!clip) { toast('먼저 클립을 선택해 주세요.', 'warn'); return; }
+      var cues = ensureCommentary(clip);
+      var start = cues.length ? cues[cues.length - 1].endMs + 120 : 0;
+      if (start >= clip.durationMs - 400) start = Math.max(0, clip.durationMs - 2200);
+      cues.push({ startMs: Math.round(start), endMs: Math.round(Math.min(clip.durationMs, start + 1800)), text: '' });
+      clip.commentarySource = clip.commentarySource || 'local';
+      renderCommentary();
+      drawPreview(true);
+      var rows = $$('#comm-list .comm-row');
+      if (rows.length) rows[rows.length - 1].querySelector('.comm-text').focus();
+    });
+    on($('#btn-comm-regen'), 'click', regenerateCommentary);
+    on($('#sel-comm-style'), 'change', function () {
+      var v = $('#sel-comm-style').value;
+      state.commentaryStyle = v === 'plain' ? 'plain' : 'badge';
+      savePrefs();
+      drawPreview(true);
+    });
   }
 
   function wireTransport() {
@@ -1962,9 +2483,11 @@
     refreshRanges();
     wireTabs();
     wireSource();
+    wireStory();
     wireDetect();
     wireReframe();
     wireCaption();
+    wireCommentary();
     wireTransport();
     wireClips();
     wireQueue();
@@ -1976,6 +2499,8 @@
     renderQueue();
     renderStats();
     syncSeg();
+    syncCaptionMode();
+    renderCommentary();
     updateAiBadge();
     $('.monitor-out').classList.add('show-safe');
 
@@ -2012,7 +2537,7 @@
 
   /* 검사(E2E)와 디버깅을 위한 읽기 전용 창구 — 비밀 값은 담지 않는다. */
   window.ClipFactoryApp = {
-    version: '1.0.0',
+    version: '1.1.0',
     getState: function () {
       return {
         source: state.source ? {
@@ -2047,6 +2572,9 @@
             id: c.id, startMs: c.startMs, endMs: c.endMs, durationMs: c.durationMs,
             score: c.score, selected: c.selected, title: c.title,
             ranges: c.ranges.map(function (r) { return [r.startMs, r.endMs]; }),
+            source: c.source || 'auto',
+            commentary: c.commentaryCues ? c.commentaryCues.length : 0,
+            commentarySource: c.commentarySource || '',
             rendered: c.rendered ? { size: c.rendered.size, width: c.rendered.width, height: c.rendered.height, encodeMs: c.rendered.encodeMs } : null
           };
         }),
@@ -2055,6 +2583,20 @@
             size: q.result ? q.result.size : 0, header: q.result ? q.result.header : '' };
         }),
         cues: state.cues.length,
+        captionMode: state.captionMode,
+        commentaryStyle: state.commentaryStyle,
+        activeClipId: state.activeClipId,
+        commTexts: (function () {
+          var c = activeClip();
+          return c && c.commentaryCues ? c.commentaryCues.map(function (x) { return x.text; }) : [];
+        })(),
+        story: {
+          segments: state.story.segments.length,
+          source: state.story.source,
+          busy: state.story.busy,
+          withCommentary: state.story.segments.filter(function (s) { return s.commentaryCues && s.commentaryCues.length; }).length,
+          spans: state.story.segments.map(function (s) { return [s.startMs, s.endMs]; })
+        },
         playing: state.playing,
         playMode: state.playMode,
         mode: state.mode,
