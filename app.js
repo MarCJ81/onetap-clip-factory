@@ -722,7 +722,8 @@
       if (clip.commentaryCues && clip.commentaryCues.length) {
         main.appendChild(el('span', {
           class: 'clip-comm',
-          text: '해설 자막 ' + clip.commentaryCues.length + '줄 · ' + (clip.commentarySource === 'ai' ? 'AI' : '자막 초안')
+          text: '해설 자막 ' + clip.commentaryCues.length + '줄 · ' +
+            (clip.commentarySource === 'ai' ? 'AI' : clip.commentarySource === 'mixed' ? 'AI+초안' : '자막 초안')
         }));
       }
 

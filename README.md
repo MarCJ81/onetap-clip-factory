@@ -134,7 +134,7 @@ python3 -m http.server 8080
 ```
 
 ```bash
-node test.js          # 단위 테스트 + 개인정보/외부요청 위생 검사 (392개 확인)
+node test.js          # 단위 테스트 + 개인정보/외부요청 위생 검사 (404개 확인)
 python3 uitest.py     # 헤드리스 Chrome E2E 152개 확인, preview-*.png 저장
 ```
 
