@@ -937,7 +937,8 @@
       '- startSec·endSec는 위 자막 시간(초) 안에서 고르고, 구간끼리 겹치지 않는다.',
       '- title·hook·commentaryCues는 원본 대사를 그대로 베끼지 말고, 시청자가 바로 이해하도록 새로 쓴 해석·설명으로 만든다.',
       '- commentaryCues는 구간마다 2~4개. offsetSec은 클립 시작 기준 초이며 클립 길이를 넘지 않는다.',
-      '- 첫 해설은 상황 요약, 가운데는 핵심 포인트, 마지막은 한 줄 해석으로 배치한다.'
+      '- 첫 해설은 상황 요약, 가운데는 핵심 포인트, 마지막은 한 줄 해석으로 배치한다.',
+      '- 출력 토큰이 제한되어 있으니 줄바꿈·들여쓰기 없이 짧게 쓴다. 해설은 2개면 충분하다.'
     ].join('\n');
     return { system: system, prompt: prompt, packed: packed, count: count, minSec: minSec, maxSec: maxSec, durationMs: durMs };
   }
@@ -1023,8 +1024,46 @@
     return out.slice(0, STORY.commentaryMax);
   }
 
+  var STORY_START_KEYS = ['startSec', 'startMs', 'start', '시작초', '시작', 'startTime'];
+  var STORY_LIST_KEYS = ['segments', 'clips', '구간', 'items', 'shots', 'result', 'highlights'];
+
   /**
-   * 모델 응답(설명 섞임·코드펜스·한글 키 허용) → 스토리 구간 목록.
+   * 토큰 한도로 잘린 JSON 응답에서 '완결된 객체'만 건져 낸다.
+   * 무료 맛보기는 출력이 900토큰에서 끊기므로, 마지막 객체가 잘려도 앞의 구간은 살린다.
+   */
+  function salvageJsonObjects(text) {
+    var out = [];
+    var s = String(text || '');
+    var depth = 0;
+    var start = -1;
+    var inStr = false;
+    var esc = false;
+    for (var i = 0; i < s.length; i++) {
+      var ch = s.charAt(i);
+      if (inStr) {
+        if (esc) esc = false;
+        else if (ch === '\\') esc = true;
+        else if (ch === '"') inStr = false;
+        continue;
+      }
+      if (ch === '"') { inStr = true; continue; }
+      if (ch === '{') {
+        if (depth === 0) start = i;
+        depth++;
+      } else if (ch === '}') {
+        if (depth > 0) depth--;
+        if (depth === 0 && start >= 0) {
+          var chunk = s.slice(start, i + 1);
+          try { out.push(JSON.parse(chunk.replace(/,\s*([}\]]])/g, '$1'))); } catch (e) { /* 잘린 객체는 버린다 */ }
+          start = -1;
+        }
+      }
+    }
+    return out;
+  }
+
+  /**
+   * 모델 응답(설명 섞임·코드펜스·한글 키·잘린 JSON 허용) → 스토리 구간 목록.
    * @returns {{ok:boolean, reason:string, segments:Array}}
    */
   function parseStoryJSON(text, opts) {
@@ -1047,8 +1086,20 @@
       }
     }
     if (raw && !Array.isArray(raw)) {
-      var list = pickKey(raw, ['segments', 'clips', '구간', 'items', 'shots', 'result', 'highlights']);
+      var list = pickKey(raw, STORY_LIST_KEYS);
       raw = Array.isArray(list) ? list : null;
+    }
+    /* 토큰 한도로 잘린 응답: 완결된 객체만 모아 쓴다(마지막 구간이 잘려도 앞은 살린다). */
+    if (!Array.isArray(raw) || !raw.length) {
+      var found = salvageJsonObjects(body);
+      var segLike = found.filter(function (x) { return pickKey(x, STORY_START_KEYS) !== null; });
+      if (segLike.length) raw = segLike;
+      else {
+        for (var fi = 0; fi < found.length; fi++) {
+          var innerList = pickKey(found[fi], STORY_LIST_KEYS);
+          if (Array.isArray(innerList) && innerList.length) { raw = innerList; break; }
+        }
+      }
     }
     if (!Array.isArray(raw) || !raw.length) return { ok: false, reason: 'not_json', segments: [] };
 
@@ -1318,7 +1369,23 @@
       if (durationMs < 400) return;
       var speechMs = 0;
       cues.forEach(function (c) { speechMs += rangeOverlap(s, e, c.startMs, c.endMs); });
+      var dialogue = cues.filter(function (c) { return rangeOverlap(s, e, c.startMs, c.endMs) > 0; })
+        .map(function (c) { return c.text; });
       var commentary = normalizeCommentary(seg.commentaryCues || [], durationMs);
+      /* 원본 대사를 그대로 옮긴 줄은 '새 해석'이 아니므로 빼고, 부족하면 초안으로 채운다. */
+      var squeezed = commentary.filter(function (c) { return !isLineCopy(c.text, dialogue); });
+      var supplemented = false;
+      if (squeezed.length < 2) {
+        var draft = localCommentary(dialogue, durationMs);
+        draft.forEach(function (d) {
+          if (squeezed.length >= 3) return;
+          if (isLineCopy(d.text, dialogue)) return;
+          squeezed.push(d);
+          supplemented = true;
+        });
+        squeezed.sort(function (a, b) { return a.startMs - b.startMs; });
+      }
+      commentary = squeezed.slice(0, STORY.commentaryMax);
       out.push({
         id: uid('clip'),
         index: i,
@@ -1335,7 +1402,8 @@
         source: 'story',
         reason: String(seg.reason || '').slice(0, 140),
         commentaryCues: commentary,
-        commentarySource: o.commentarySource || (commentary.length ? 'ai' : 'local')
+        commentarySource: o.commentarySource === 'local' ? 'local'
+          : (supplemented ? 'mixed' : (commentary.length ? 'ai' : 'local'))
       });
     });
     return out;
@@ -1361,6 +1429,20 @@
     list.sort(function (a, b) { return a.startMs - b.startMs; });
     list.forEach(function (c, i) { c.index = i; });
     return { clips: list, added: added, skipped: skipped };
+  }
+
+  /** 해설 초안·AI 문장이 원본 대사를 그대로 옮긴 것인지 */
+  function isLineCopy(text, dialogueLines) {
+    var norm = function (t) { return String(t || '').replace(/[\s.,?!·"'“”‘’~-]/g, ''); };
+    var a = norm(text);
+    if (!a) return true;
+    var lines = typeof dialogueLines === 'string' ? [dialogueLines] : (dialogueLines || []);
+    return lines.some(function (line) {
+      var b = norm(line);
+      if (!b) return false;
+      if (a === b) return true;
+      return a.length >= b.length * 0.6 && (b.indexOf(a) >= 0 || a.indexOf(b) >= 0);
+    });
   }
 
   /** 스토리 클립과 겹치는 자동·수동 클립은 지우지 않고 선택만 해제한다. */
@@ -1553,8 +1635,10 @@
     localStorySegments: localStorySegments,
     segmentsToClips: segmentsToClips,
     mergeStoryClips: mergeStoryClips,
+    isLineCopy: isLineCopy,
     deselectOverlapping: deselectOverlapping,
     normalizeCommentary: normalizeCommentary,
+    salvageJsonObjects: salvageJsonObjects,
     captionBands: captionBands,
 
     safeName: safeName,
