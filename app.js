@@ -2639,6 +2639,7 @@
     filmSyncTimeline();
     filmDraw(state.film.tMs);
     renderBlogMeta();
+    if ((state.film.imageChoices || []).length) loadSceneImages();
     var dl = $('#btn-film-download');
     if (dl) dl.hidden = true;
     if (scenes.length) filmNote(L('장면 ' + scenes.length + '개 · ' + fmtClock(state.film.totalMs) + ' · 렌더할 수 있습니다',
@@ -2804,12 +2805,13 @@
     var scenes = state.film.scenes;
     if (!list.length || !scenes.length) { renderScenes(); filmDraw(state.film.tMs); return; }
     state.film.images = {};
+    var token = (state.film.imgToken || 0) + 1;
+    state.film.imgToken = token;
     var cursor = 0;
     var i = 0;
     function next() {
-      if (i >= scenes.length || cursor >= list.length) {
-        renderScenes();
-        filmDraw(state.film.tMs);
+      if (token !== state.film.imgToken || i >= scenes.length || cursor >= list.length) {
+        if (token === state.film.imgToken) { renderScenes(); filmDraw(state.film.tMs); }
         return;
       }
       var item = list[cursor++];
@@ -2817,7 +2819,7 @@
       task.then(function (img) {
         var w = img.naturalWidth || img.width || 0;
         if (w && w < 320) return next(); /* 아이콘·작은 썸네일은 장면 사진으로 안 쓴다 */
-        state.film.images[i++] = img;
+        if (token === state.film.imgToken) state.film.images[i++] = img;
         return next();
       }).catch(function () { return next(); });
     }

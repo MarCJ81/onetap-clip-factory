@@ -506,10 +506,11 @@
       ctx.restore();
       /* 글자 가독성을 위한 위·아래 스크림 */
       var scrim = ctx.createLinearGradient(0, 0, 0, h);
-      scrim.addColorStop(0, 'rgba(4,5,8,0.72)');
-      scrim.addColorStop(0.38, 'rgba(4,5,8,0.28)');
-      scrim.addColorStop(0.62, 'rgba(4,5,8,0.52)');
-      scrim.addColorStop(1, 'rgba(4,5,8,0.88)');
+      scrim.addColorStop(0, 'rgba(4,5,8,0.58)');
+      scrim.addColorStop(0.34, 'rgba(4,5,8,0.16)');
+      scrim.addColorStop(0.58, 'rgba(4,5,8,0.30)');
+      scrim.addColorStop(0.78, 'rgba(4,5,8,0.52)');
+      scrim.addColorStop(1, 'rgba(4,5,8,0.84)');
       ctx.fillStyle = scrim;
       ctx.fillRect(0, 0, w, h);
       return;
@@ -582,6 +583,7 @@
     var hLen = (scene.headline || '').length;
     var headSize = Math.round(h * (hLen <= 16 ? 0.074 : hLen <= 26 ? 0.064 : hLen <= 40 ? 0.054 : 0.047));
     ctx.font = '900 ' + headSize + 'px "PlexKR", "Apple SD Gothic Neo", sans-serif';
+    var shadowOn = !!o.image;
     var headLines = wrapWidth(ctx, scene.headline || '', inner, 3);
     var y = h * 0.34;
     var lh = headSize * 1.16;
@@ -594,8 +596,16 @@
         ctx.fillRect(mx - Math.round(w * 0.008), y + headSize * 0.26, Math.min(inner, tw + w * 0.016), Math.max(4, Math.round(headSize * 0.07)));
         ctx.globalAlpha = 1;
       }
+      if (shadowOn) {
+        ctx.shadowColor = 'rgba(3,4,6,0.72)';
+        ctx.shadowBlur = Math.round(headSize * 0.35);
+        ctx.shadowOffsetY = Math.max(1, Math.round(headSize * 0.06));
+      }
       ctx.fillStyle = theme.ink;
       ctx.fillText(line, mx, y);
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetY = 0;
       y += lh;
     });
     ctx.restore();
@@ -607,6 +617,11 @@
       ctx.textBaseline = 'alphabetic';
       var subSize = Math.round(h * 0.028);
       ctx.font = '500 ' + subSize + 'px "PlexKR", "Apple SD Gothic Neo", sans-serif';
+      if (o.image) {
+        ctx.shadowColor = 'rgba(3,4,6,0.8)';
+        ctx.shadowBlur = Math.round(subSize * 0.5);
+        ctx.shadowOffsetY = 1;
+      }
       ctx.fillStyle = theme.sub;
       var subLines = wrapWidth(ctx, scene.sub, inner, 2);
       var sy = h * 0.34 + headLines.length * lh + subSize * 0.5;
