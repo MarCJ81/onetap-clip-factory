@@ -68,8 +68,8 @@
     <tr><td>AI 훅·스토리 추천·해설 자막 요청(자막에서 뽑은 텍스트)</td><td>무료 맛보기 서버 또는 사용자가 연결한 API(Gemini 등)</td><td>사용자가 버튼을 누를 때만 전송</td></tr>
     <tr><td>블로그 글 읽기(URL·페이지 내용)</td><td>읽기 프록시 r.jina.ai를 거쳐 이 브라우저로</td><td>URL을 읽기를 누를 때만 전송</td></tr>
     <tr><td>블로그 사진(이미지 URL)</td><td>이미지 프록시 images.weserv.nl을 거쳐 표시</td><td>사진을 표시할 때만 URL 전달</td></tr>
-    <tr><td>더빙할 문장(대본 텍스트)</td><td>Fish Audio API 또는 사용자가 지정한 프록시</td><td>더빙을 켜고 렌더할 때만 전송</td></tr>
-    <tr><td>Gemini·Fish API 키</td><td>탭의 sessionStorage(선택한 경우 localStorage)</td><td>해당 제공자에게 직접 요청할 때만</td></tr>
+    <tr><td>더빙할 문장(대본 텍스트)</td><td>무료 프록시(onetap-fish-proxy)를 거쳐 Fish Audio API</td><td>더빙을 켜고 렌더할 때만 전송</td></tr>
+    <tr><td>Gemini·Fish API 키</td><td>탭의 sessionStorage(선택한 경우 localStorage)</td><td>Gemini 키는 Google에, Fish 키는 프록시를 거쳐 Fish Audio에만</td></tr>
     <tr><td>화면 설정(테마·슬라이더 값)</td><td>브라우저 localStorage</td><td>나가지 않음</td></tr>
     <tr><td>Pro API 키</td><td>탭의 sessionStorage</td><td>연결한 제공자에게 브라우저에서 직접 요청할 때만</td></tr>
   </table>
@@ -94,7 +94,7 @@
   <p>Gemini 키를 넣으면 글의 텍스트 프롬프트가 Google의 generativelanguage.googleapis.com으로 브라우저에서 직접 전송됩니다. 키는 기본으로 탭의 sessionStorage에만 있고, “이 브라우저에 기억”을 고른 경우에만 localStorage에 남습니다. 키 지우기 버튼으로 언제든 삭제할 수 있습니다. 영상·사진·음성은 Gemini로 보내지 않습니다.</p>
 
   <h2>6. 더빙(Fish Audio)</h2>
-  <p>더빙을 Fish Audio 성우로 고르고 렌더하면, 장면의 자막 문장이 Fish Audio API(api.fish.audio) 또는 사용자가 직접 지정한 프록시 주소로 전송되어 음성을 받습니다. 브라우저에서 직접 호출이 막히는 경우(CORS)에는 프록시가 필요하며, 프록시는 사용자가 직접 준비한 서버입니다. 더빙을 쓰지 않는 무음 모드에서는 어떤 음성도 외부로 나가지 않습니다.</p>
+  <p>더빙을 Fish Audio 성우로 고르고 렌더하면, 장면의 자막 문장이 Fish Audio API(api.fish.audio)로 전송되어 음성을 받습니다. 브라우저에서 직접 호출하는 길은 CORS로 막혀 있어, 이 앱은 무료 공용 프록시(<code>onetap-fish-proxy.onetap-ai.workers.dev</code>, Cloudflare Worker)를 기본으로 거칩니다. 프록시는 사용자가 입력한 Fish 키를 Authorization 헤더 그대로 Fish Audio에 넘기기만 하고, <strong>키를 저장하거나 따로 기록하지 않습니다</strong>(목적지도 api.fish.audio 하나로 고정). 키가 프록시를 지나므로, 자기 키를 어떤 서버에도 보내고 싶지 않으면 주소 칸을 비워 직접 호출로 바꾸거나 다른 프록시를 넣으면 됩니다(직접 호출은 대부분 CORS로 막힙니다). 프록시 운영자는 요청이 오간 사실은 볼 수 있지만 문장과 키를 보관하지 않습니다. 더빙을 쓰지 않는 무음 모드에서는 어떤 음성도 외부로 나가지 않습니다.</p>
 
   <h2>7. Pro 연결</h2>
   <p>OpenAI · Google Gemini · Anthropic Claude · 자체 서버 중 하나를 연결하면, 요청은 그 제공자에게 <strong>브라우저에서 직접</strong> 갑니다. 이 앱의 중간 서버는 없습니다. 키는 탭을 닫으면 사라지는 sessionStorage에 저장되며, “이 브라우저에 기억”을 고른 경우에만 localStorage에 남습니다. 언제든 연결 해제로 키를 지울 수 있습니다.</p>

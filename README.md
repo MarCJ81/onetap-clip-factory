@@ -69,7 +69,7 @@ mediabunny로 H.264 MP4로 인코딩합니다. 그래서 무음 제거·장면 �
 | 글 가져오기 | `r.jina.ai` 읽기 프록시로 제목·본문·사진 추출, 네이버 블로그 URL은 `PostView`로 정규화 | 1초 폴백: 본문 붙여넣기 칸으로 포커스 이동 + 안내 |
 | 5장면 대본 | Gemini(내 키) → Pro → 무료 맛보기 → 규칙 초안. 장면별 화면 제목·부제·자막·사진 검색어 | 규칙 초안이 같은 모양으로 생성(항상 성공) |
 | 사진 | 글 사진을 장면에 순서대로, 작은 아이콘(<320px)은 건너뜀. 이미지 프록시 `images.weserv.nl`로 캔버스 오염 방지. 내 사진 업로드·Pexels 검색(무료 키)도 가능 | 사진이 없으면 그라데이션 카드 |
-| 더빙 | 무음(자막 타이밍) · 브라우저 음성(미리 듣기 전용) · Fish Audio(키+선택 프록시) | 키 없음/CORS 실패 → 무음으로 내려가고 이유를 표시 |
+| 더빙 | 무음(자막 타이밍) · 브라우저 음성(미리 듣기 전용) · Fish Audio(내 키 + 무료 프록시 기본) | 키 없음/프록시 실패 → 무음으로 내려가고 이유를 표시 |
 | BGM | 내장 합성(`calm`/`beat`, OfflineAudioContext) 또는 내 파일. 말하는 구간에서 볼륨을 줄이는 덕킹 | BGM 없이 렌더 |
 | 렌더 | 9:16 캔버스 → H.264 MP4. 미리보기와 **같은 `drawFilmFrame`** 을 쓰므로 WYSIWYG | WebCodecs 없으면 렌더 버튼 비활성 + 이유 표시 |
 
@@ -83,7 +83,8 @@ mediabunny로 H.264 MP4로 인코딩합니다. 그래서 무음 제거·장면 �
 
 ### D. Fish Audio 더빙 (`engines/tts.js`)
 - `POST https://api.fish.audio/v1/tts`, `Authorization: Bearer`, `model: s2.1-pro-free|s2.1-pro` 헤더, `{text, reference_id, format:"mp3"}`
-- 브라우저 직접 호출은 CORS로 막히므로 **프록시 주소** 칸을 둠(사용자의 Worker가 `api.fish.audio/v1/tts`로 중계)
+- 브라우저 직접 호출은 CORS로 막히므로 **무료 공용 프록시**(`https://onetap-fish-proxy.onetap-ai.workers.dev`, Cloudflare Worker)를 기본으로 거침(`DEFAULT_PROXY`). 프록시는 키를 저장하지 않고 `Authorization`·`model` 헤더와 본문을 `api.fish.audio/v1/tts`로 그대로 넘김
+- 주소 칸에서 다른 프록시로 바꿀 수 있고, 비우면 직접 호출(대부분 CORS로 막힘). Worker 소스는 `infra/fish-proxy-worker/`
 - 받은 mp3는 `decodeAudioData` → 장면 시작 +140ms에 배치, 겹치면 장면 길이가 늘어남
 
 ## 3. 실제 계산 방식
@@ -149,7 +150,7 @@ mediabunny로 H.264 MP4로 인코딩합니다. 그래서 무음 제거·장면 �
 - **얼굴 인식 모델은 여전히 없습니다.** 크롭은 피부톤·움직임·중앙 가중 추적이고, 블러 배경은 원본 전체를 살리는 대신 좌우에 여백이 생깁니다.
 - **음성 인식(ASR)도 없습니다.** 대본을 붙여넣으면 `scriptToCues`가 말소리 구간에 글자 수 비례로 배분합니다(실제 발음과 수백 ms 차이 가능). Gemini에 오디오를 보내는 전사는 넣지 않았습니다 — 영상·음성 무전송 원칙 때문입니다.
 - **블로그 읽기는 공개 읽기 프록시(r.jina.ai)에 의존합니다.** 막는 사이트는 붙여넣기로 넘어가고, 사진은 images.weserv.nl을 거칩니다. 사진이 없는 글이나 프록시가 막힌 환경에서는 그라데이션 카드로 만듭니다.
-- **Fish Audio는 브라우저 직접 호출이 CORS로 막힙니다.** 사용자가 준비한 프록시가 필요하고, 없으면 무음 모드로 렌더합니다.
+- **Fish Audio는 브라우저 직접 호출이 CORS로 막힙니다.** 무료 프록시(`onetap-fish-proxy.onetap-ai.workers.dev`)가 기본으로 붙어 있어 키만 있으면 바로 됩니다. 프록시·키 문제로 실패하면 무음 모드로 렌더합니다.
 - **AAC가 없는 브라우저(일부 Linux Chromium·헤드리스)는 MP4에 Opus 오디오를 넣습니다.** 영상은 H.264 그대로지만, 일부 플랫폼 업로더는 Opus 오디오를 거부할 수 있습니다. 그런 환경에서는 음소거 렌더 또는 AAC 지원 브라우저를 쓰세요.
 - **카드 쇼츠의 장면 길이는 자막 글자 수/더빙 길이로 정합니다.** 더빙이 없으면 읽는 속도를 가정하므로, 말이 빠른 성우를 쓰면 장면이 짧게 느껴질 수 있습니다.
 
