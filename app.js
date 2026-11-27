@@ -3357,7 +3357,7 @@
       }, [
         el('span', {
           class: 'style-swatch',
-          text: style.id === 'yellow' ? '가나다' : style.id === 'white' ? '가나다' : style.id === 'box' ? '가나다' : '키커',
+          text: style.id === 'kicker' ? L('키커', 'Kick') : L('가나다', 'Aa'),
           style: { background: style.box || '#111419', color: style.fill }
         }),
         el('span', { class: 'style-name', text: style.label })
@@ -3641,6 +3641,25 @@
   }
 
   /* ── V2 배선: 자동 · 대본 · 블로그 · Gemini ───────────────── */
+  /** 자동 패널 셀렉트의 짧은 라벨 — 좁은 레일에서 영어가 잘리지 않게 */
+  function applyAutoLabels() {
+    var crop = $('#sel-auto-crop');
+    if (crop && crop.options.length === 3) {
+      var cropText = [['피사체 추적', 'Subject'], ['중앙 고정', 'Center'], ['블러 배경', 'Blur']];
+      for (var i = 0; i < 3; i++) crop.options[i].text = isEn() ? cropText[i][1] : cropText[i][0];
+    }
+    var sil = $('#sel-auto-silence');
+    if (sil && sil.options.length === 4) {
+      var silText = [['자르지 않음', 'No cut'], ['0.4초 이상', '0.4s+'], ['0.6초 이상', '0.6s+'], ['1.0초 이상', '1.0s+']];
+      for (var j = 0; j < 4; j++) sil.options[j].text = isEn() ? silText[j][1] : silText[j][0];
+    }
+    var cnt = $('#sel-auto-count');
+    if (cnt && cnt.options.length === 3) {
+      var cntText = ['2', '3', '5'];
+      for (var k = 0; k < 3; k++) cnt.options[k].text = isEn() ? cntText[k] : cntText[k] + '개';
+    }
+  }
+
   function wireAuto() {
     on($('#btn-auto-run'), 'click', runAuto);
     ['#sel-auto-crop', '#sel-auto-silence', '#sel-auto-count'].forEach(function (sel) {
@@ -3653,6 +3672,11 @@
       });
     });
     on($('#tg-auto-ai'), 'change', savePrefs);
+    applyAutoLabels();
+    /* i18n 은 이 파일 뒤에 로드되어 DOMContentLoaded 에서 언어를 정한다.
+       load 시점에 한 번 더 맞춰 두면 어떤 순서에서도 영어 라벨이 유지된다. */
+    on(window, 'load', applyAutoLabels);
+    on(document, 'onetap:langready', applyAutoLabels);
     syncAutoButton();
   }
 
@@ -4052,6 +4076,7 @@
       try {
         syncSeg();
         syncCaptionMode();
+        applyAutoLabels();
         buildThemeSeg();
         buildFilmSelects();
         renderClips();

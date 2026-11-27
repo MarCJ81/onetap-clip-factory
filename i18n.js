@@ -1979,7 +1979,7 @@ window.__ONETAP_I18N_DICT__ = {
 "영상 자동컷": "Video auto-cut",
 "블로그 쇼츠": "Blog shorts",
 "Gemini 키": "Gemini key",
-"원버튼 자동 쇼츠": "One-press auto shorts",
+"원버튼 자동 쇼츠": "One-press shorts",
 "영상 → 9:16": "Video → 9:16",
 "세로 크롭": "Vertical crop",
 "블러 배경": "Blurred background",
