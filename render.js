@@ -183,19 +183,6 @@
       });
     }
 
-    /* 카라오케: 지금 읽는 글자까지 색을 입힌다. 진행률은 글자 수로 환산한다. */
-    var karaoke = !!style.karaoke && typeof opts.progress === 'number';
-    var spokenTotal = karaoke ? C.spokenChars(lines.join(' '), opts.progress) : 0;
-    var perLine = [];
-    if (karaoke) {
-      var acc = 0;
-      lines.forEach(function (l) {
-        var room = Math.max(0, spokenTotal - acc);
-        perLine.push(Math.min(l.length, room));
-        acc += l.length + 1;
-      });
-    }
-
     lines.forEach(function (line, i) {
       var y = baseY + i * lh;
       var x = alignLeft ? Math.round(w * 0.07) + pad : w / 2;
