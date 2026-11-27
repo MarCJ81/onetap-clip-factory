@@ -929,6 +929,14 @@ input[type="range"]:disabled { opacity: 0.4; cursor: not-allowed; }
 .blog-rail .mini-field { margin-top: 8px; }
 .blog-rail .btn-row { margin-top: 7px; }
 .blog-rail .switch-row { margin-top: 10px; }
+
+/* Fish Audio 키 발급 안내 */
+.fish-key-box { margin-top: 9px; display: grid; gap: 6px; }
+.fish-key-link { width: 100%; }
+.fish-key-link:hover { color: var(--lime); border-color: var(--lime); }
+.fish-key-steps { margin: 0; padding-left: 15px; display: grid; gap: 1px; font-size: 11px; line-height: 1.5; color: var(--muted); }
+.fish-key-steps li::marker { font-family: var(--mono); color: var(--muted); }
+.fish-guide-steps { margin-top: 10px; }
 .blog-head h1 em { color: var(--lime); font-style: normal; }
 
 /* 장면 카드 */
