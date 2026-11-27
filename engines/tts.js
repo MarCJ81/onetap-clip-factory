@@ -7,6 +7,9 @@
                 브라우저 직접 호출은 CORS로 막힌다. 그래서 무료 공용 프록시
                 (DEFAULT_PROXY, Cloudflare Worker)를 기본으로 쓰고, 주소 칸에서
                 다른 프록시로 바꿀 수 있다. 실패하면 조용히 silent로 내려간다.
+   4) edge    — Microsoft Edge 신경망 성우. 키 없이 무료. 같은 프록시의
+                /v1/edge-tts 가 마이크로소프트와 WebSocket 으로 붙어 MP3 를 준다.
+                한국어 여성(선히)·남성(인준)과 영어 멀티링구얼 성우를 쓴다.
 
    키는 sessionStorage(선택 시 localStorage)에만 있고 이 브라우저를 떠나지 않는다.
    ========================================================================== */
@@ -24,8 +27,20 @@
   var VOICE_PREF = 'clip-factory.fish.voice';
   var MODEL_PREF = 'clip-factory.fish.model';
   var PROXY_PREF = 'clip-factory.fish.proxy';
+  var EDGE_VOICE_PREF = 'clip-factory.edge.voice';
+  var EDGE_PROXY_PREF = 'clip-factory.edge.proxy';
 
-  var state = { key: '', remember: false, voice: '', model: 's2.1-pro-free', proxy: DEFAULT_PROXY };
+  var EDGE_VOICES = [
+    { id: 'ko-KR-SunHiNeural', label: '선히 · 한국어 여성' },
+    { id: 'ko-KR-InJoonNeural', label: '인준 · 한국어 남성' },
+    { id: 'ko-KR-HyunsuMultilingualNeural', label: '현수 · 한국어 남성(다국어)' },
+    { id: 'en-US-EmmaMultilingualNeural', label: 'Emma · English female' },
+    { id: 'en-US-AndrewMultilingualNeural', label: 'Andrew · English male' }
+  ];
+  var state = {
+    key: '', remember: false, voice: '', model: 's2.1-pro-free', proxy: DEFAULT_PROXY,
+    edgeVoice: EDGE_VOICES[0].id, edgeProxy: DEFAULT_PROXY
+  };
   var LOCAL_NONE = 'none'; // 프록시를 비우겠다는 표시(저장값 ''와 '아직 설정 안 함'을 구분)
   var loaded = false;
 
@@ -43,6 +58,8 @@
         var v = l.getItem(VOICE_PREF); if (v) state.voice = v;
         var m = l.getItem(MODEL_PREF); if (m) state.model = m;
         var p = l.getItem(PROXY_PREF); if (p !== null) state.proxy = p === LOCAL_NONE ? '' : p;
+        var ev = l.getItem(EDGE_VOICE_PREF); if (ev) state.edgeVoice = ev;
+        var ep = l.getItem(EDGE_PROXY_PREF); if (ep) state.edgeProxy = ep;
       }
       if (!state.key && s) {
         var sk = s.getItem(KEY_SESSION);
@@ -60,6 +77,8 @@
     if (o.voice !== undefined) state.voice = trim(o.voice);
     if (o.model !== undefined) state.model = trim(o.model) || 's2.1-pro-free';
     if (o.proxy !== undefined) state.proxy = trim(o.proxy);
+    if (o.edgeVoice !== undefined) state.edgeVoice = trim(o.edgeVoice) || EDGE_VOICES[0].id;
+    if (o.edgeProxy !== undefined) state.edgeProxy = trim(o.edgeProxy) || DEFAULT_PROXY;
     try {
       if (root.sessionStorage) {
         if (state.key) root.sessionStorage.setItem(KEY_SESSION, state.key);
@@ -71,6 +90,8 @@
         if (state.voice) root.localStorage.setItem(VOICE_PREF, state.voice);
         if (state.model) root.localStorage.setItem(MODEL_PREF, state.model);
         root.localStorage.setItem(PROXY_PREF, state.proxy || LOCAL_NONE);
+        if (state.edgeVoice) root.localStorage.setItem(EDGE_VOICE_PREF, state.edgeVoice);
+        if (state.edgeProxy) root.localStorage.setItem(EDGE_PROXY_PREF, state.edgeProxy);
       }
     } catch (e) { /* noop */ }
     return status();
@@ -94,7 +115,10 @@
       voice: state.voice,
       model: state.model,
       proxy: state.proxy,
-      proxyDefault: DEFAULT_PROXY
+      proxyDefault: DEFAULT_PROXY,
+      edgeVoice: state.edgeVoice || EDGE_VOICES[0].id,
+      edgeProxy: state.edgeProxy || DEFAULT_PROXY,
+      edgeVoices: EDGE_VOICES
     };
   }
 
@@ -158,16 +182,23 @@
     var ctx;
     try { ctx = new Ctx(); } catch (e) { return Promise.resolve(null); }
     return new Promise(function (resolve) {
+      var done = false;
+      var closed = false;
+      function finish(value) {
+        if (done) return false;
+        done = true;
+        if (!closed) { closed = true; try { ctx.close(); } catch (e) { /* noop */ } }
+        resolve(value);
+        return true;
+      }
       try {
-        var p = ctx.decodeAudioData(arrayBuffer, function (b) { try { ctx.close(); } catch (e) { /* noop */ } resolve(b); },
-          function () { try { ctx.close(); } catch (e) { /* noop */ } resolve(null); });
+        var p = ctx.decodeAudioData(arrayBuffer, function (b) { finish(b); },
+          function () { finish(null); });
         if (p && typeof p.then === 'function') {
-          p.then(function (b) { try { ctx.close(); } catch (e) { /* noop */ } resolve(b); },
-            function () { try { ctx.close(); } catch (e) { /* noop */ } resolve(null); });
+          p.then(function (b) { finish(b); }, function () { finish(null); });
         }
       } catch (e) {
-        try { ctx.close(); } catch (e2) { /* noop */ }
-        resolve(null);
+        finish(null);
       }
     });
   }
@@ -233,6 +264,72 @@
         message: aborted ? '응답 시간이 초과됐습니다.' : proxy ?
           L('프록시(' + proxy + ')에 연결하지 못했습니다. 주소와 네트워크를 확인해 주세요.', 'Could not reach the proxy (' + proxy + '). Check the address and network.') :
           '브라우저에서 Fish Audio로 직접 연결이 막혔습니다(CORS). 프록시 주소를 비우지 말고 기본 프록시를 쓰세요.'
+      };
+    }).then(function (res) {
+      if (timer) clearTimeout(timer);
+      return res;
+    });
+  }
+
+  /* ── 3) Edge TTS (무료 한국어 성우) ───────────────────── */
+  /**
+   * 한 문장을 키 없이 마이크로소프트 Edge 성우로. 성공하면 AudioBuffer.
+   * opts: {voice, rate, pitch, volume, proxy, timeoutMs}
+   */
+  function synthesizeEdge(text, opts) {
+    load();
+    var o = opts || {};
+    var s = trim(text);
+    if (!s) return Promise.resolve({ ok: false, reason: 'empty' });
+    var proxy = trim(o.proxy === undefined ? state.edgeProxy : o.proxy) || DEFAULT_PROXY;
+    var url = proxy.replace(/\/+$/, '') + '/v1/edge-tts';
+    var body = {
+      text: s.slice(0, 2000),
+      voice: trim(o.voice || state.edgeVoice) || EDGE_VOICES[0].id,
+      rate: o.rate || '+0%',
+      pitch: o.pitch || '+0Hz',
+      volume: o.volume || '+0%'
+    };
+    var controller = typeof root.AbortController === 'function' ? new root.AbortController() : null;
+    var timer = null;
+    var init = {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      credentials: 'omit',
+      mode: 'cors',
+      cache: 'no-store'
+    };
+    if (controller) {
+      init.signal = controller.signal;
+      timer = setTimeout(function () { try { controller.abort(); } catch (e) { /* noop */ } }, o.timeoutMs || 30000);
+    }
+    return root.fetch(url, init).then(function (res) {
+      if (!res.ok) {
+        return res.text().then(function (t) {
+          var parsed = null;
+          try { parsed = JSON.parse(t); } catch (e) { parsed = null; }
+          return {
+            ok: false,
+            reason: (parsed && parsed.reason) || ('http_' + res.status),
+            status: res.status,
+            message: (parsed && parsed.message) || (t || '').slice(0, 160)
+          };
+        });
+      }
+      return res.arrayBuffer().then(function (buf) {
+        if (!buf || !buf.byteLength) return { ok: false, reason: 'empty' };
+        return decodeAudio(buf).then(function (audioBuffer) {
+          if (!audioBuffer) return { ok: false, reason: 'decode', message: '음성을 해석하지 못했습니다.' };
+          return { ok: true, buffer: audioBuffer, bytes: buf.byteLength, voice: body.voice };
+        });
+      });
+    }).catch(function (err) {
+      var aborted = controller && controller.signal && controller.signal.aborted;
+      return {
+        ok: false,
+        reason: aborted ? 'timeout' : 'network',
+        message: aborted ? '응답 시간이 초과됐습니다.' : L('무료 성우 서버(' + proxy + ')에 연결하지 못했습니다.', 'Could not reach the free voice server (' + proxy + ').')
       };
     }).then(function (res) {
       if (timer) clearTimeout(timer);
@@ -306,6 +403,9 @@
     speak: speak,
     stopSpeaking: stopSpeaking,
     synthesizeFish: synthesizeFish,
+    synthesizeEdge: synthesizeEdge,
+    EDGE_VOICES: EDGE_VOICES,
+    DEFAULT_EDGE_VOICE: EDGE_VOICES[0].id,
     decodeAudio: decodeAudio,
     makeBuffer: makeBuffer,
     placeBuffer: placeBuffer

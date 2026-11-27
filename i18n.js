@@ -2148,7 +2148,58 @@ window.__ONETAP_I18N_DICT__ = {
 "대사만": "Dialogue only",
 "해설+대사": "Commentary + dialogue"
 };
-window.__ONETAP_I18N_RULES__ = [["유튜브", "YouTube"], ["틱톡", "TikTok"], ["인스타그램", "Instagram"], ["인스타", "Instagram"], ["(\\d+)\\s*시간 전", "$1h ago"], ["(\\d+)\\s*일 전", "$1d ago"], ["(\\d+)\\s*분 전", "$1m ago"], ["(\\d+)\\s*초 전", "$1s ago"], ["(\\d+)\\s*초", "$1s"], ["(\\d+)\\s*개", "$1"], ["(\\d+)\\s*건", "$1 items"], ["(\\d+)\\s*회", "$1 calls"], ["(\\d+)\\s*명", "$1 people"], ["(\\d+)\\s*점", "$1 pts"], ["(\\d+)\\s*자", "$1 chars"], ["조회수", "views"], ["구독자", "subscribers"], ["좋아요", "likes"], ["댓글", "comments"]];
+window.__ONETAP_I18N_RULES__ = [["유튜브", "YouTube"], ["틱톡", "TikTok"], ["인스타그램", "Instagram"], ["인스타", "Instagram"], ["(\\d+)\\s*시간 전", "$1h ago"], ["(\\d+)\\s*일 전", "$1d ago"], ["(\\d+)\\s*분 전", "$1m ago"], ["(\\d+)\\s*초 전", "$1s ago"], ["(\\d+)\\s*초", "$1s"], ["(\\d+)\\s*개", "$1"], ["(\\d+)\\s*장면", "$1 scenes"], ["(\\d+)\\s*문단", "$1 paragraphs"], ["(\\d+)\\s*장", "$1 photos"], ["(\\d+)\\s*건", "$1 items"], ["(\\d+)\\s*회", "$1 calls"], ["(\\d+)\\s*명", "$1 people"], ["(\\d+)\\s*점", "$1 pts"], ["(\\d+)\\s*자", "$1 chars"], ["조회수", "views"], ["구독자", "subscribers"], ["좋아요", "likes"], ["댓글", "comments"]];
+/* V2.1 additions */
+Object.assign(window.__ONETAP_I18N_DICT__, {
+"무료 성우": "Free voice",
+"선히 · 한국어 여성": "SunHi · Korean female",
+"인준 · 한국어 남성": "InJoon · Korean male",
+"현수 · 한국어 남성(다국어)": "Hyunsu · Korean male (multilingual)",
+"상단 제목 + 하단 자막": "Top title + bottom captions",
+"중앙 임팩트 키워드": "Center impact keyword",
+"뉴스 · 매거진 카드": "News · magazine card",
+"랭킹 카운트다운": "Ranking countdown",
+"시네마틱 미니멀": "Cinematic minimal",
+"자동 추천 (글 길이)": "Auto (by length)",
+"아직 모은 레퍼런스가 없습니다.": "No references collected yet.",
+"무료 한국어 성우": "Free Korean voice",
+"자막 조절": "Caption controls",
+"무료 한국어 성우 (Edge TTS)": "Free Korean voice (Edge TTS)",
+"성우": "Voice",
+"말 속도": "Speed",
+"느리게": "Slower",
+"보통": "Normal",
+"빠르게": "Faster",
+"아주 빠르게": "Fastest",
+"성우 서버": "Voice server",
+"키 없이 무료입니다. 첫 장면을 미리 들어 보고 마음에 드는 성우를 고르세요.": "Free, no key. Preview the first scene and pick the voice you like.",
+"첫 장면 목소리 미리 듣기": "Preview the first scene voice",
+"숏폼 레이아웃": "Short-form layout",
+"자막 조절": "Caption controls",
+"기본값": "Reset",
+"크기": "Size",
+"세로 위치": "Vertical position",
+"상단": "Top",
+"중앙": "Center",
+"하단": "Bottom",
+"직접 (%)": "Custom (%)",
+"위치": "Position",
+"글자색": "Text color",
+"테두리색": "Outline color",
+"배경색": "Background color",
+"테두리 두께": "Outline width",
+"자막 배경": "Caption background",
+"반투명 박스": "Semi-transparent box",
+"숏폼 레퍼런스": "Short-form references",
+"키워드로 실제 인기 쇼츠를 모아 리듬·길이를 내 영상에 맞춥니다. YouTube Data API 키는 무료이며 이 브라우저에만 저장됩니다.": "Collect real popular shorts by keyword and match their rhythm and length. The YouTube Data API key is free and stays in this browser.",
+"예: 중고 노트북, 자취 요리": "e.g. used laptop, solo cooking",
+"수집": "Collect",
+"YouTube Data API 키 (무료)": "YouTube Data API key (free)",
+"키가 없으면 키 입력칸이 열립니다. 영상 길이·조회수·훅 문장을 목록에서 고르면 프리셋이 적용됩니다.": "Without a key the key field opens. Pick a video by length, views and hook to apply its preset.",
+"참고 레퍼런스": "Reference",
+"장면 수": "Scenes",
+});
+
 /* OneTap i18n engine — Korean / English (auto-detect + manual switch)
    Dictionary is generated per app; text is translated in place, so no re-render is needed. */
 (function () {

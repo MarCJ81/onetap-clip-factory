@@ -8,3 +8,6 @@ preview-*.png
 .DS_Store
 v2-*.png
 fish-guide-ko.png
+uitest-*.py
+v21-*.png
+.wrangler/

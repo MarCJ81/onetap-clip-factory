@@ -1677,6 +1677,28 @@
     }
   ];
 
+  /* 숏폼 모양 레퍼런스 — 같은 장면 데이터를 5가지 레이아웃으로 그린다 */
+  var FILM_LAYOUTS = [
+    { id: 'topTitle', label: '상단 제목 + 하단 자막', note: '제목은 위에 고정, 자막은 아래' },
+    { id: 'centerImpact', label: '중앙 임팩트 키워드', note: '한 문장을 화면 가운데 크게' },
+    { id: 'newsCard', label: '뉴스 · 매거진 카드', note: '카드 패널에 제목·부제, 하단 자막' },
+    { id: 'ranking', label: '랭킹 카운트다운', note: '큰 순번 + 짧은 제목' },
+    { id: 'cinematic', label: '시네마틱 미니멀', note: '레터박스 + 작은 중앙 문구' }
+  ];
+
+  /* 자막 기본값 — UI 에서 크기·색·테두리·위치를 바꾼다 */
+  var SUBTITLE_DEFAULT = {
+    sizePx: 64,        // 1080 폭 기준 px
+    color: '#FFFFFF',
+    stroke: '#0A0A0B',
+    strokeWidth: 8,
+    box: '',           // '' 이면 배경 없음, 색이면 반투명 박스
+    pos: 'bottom',     // top | center | bottom | custom
+    posPct: 84,        // 블록 중심의 세로 위치 %
+    maxLines: 2,
+    weight: 900
+  };
+
   /* 데모 글 — 네트워크 없이 블로그 흐름을 끝까지 시험하기 위한 자체 원고 */
   var DEMO_ARTICLE = {
     title: '중고 노트북 살 때 꼭 확인할 5가지',
@@ -1710,30 +1732,120 @@
     return out;
   }
 
-  /** 본문 문단 → 장면 수에 맞춰 묶기 */
+  /** 본문 문단 → 장면 수에 맞춰 순서대로 묶기 (문단을 버리지 않는다) */
   function groupParagraphs(paragraphs, count) {
     var list = (paragraphs || []).filter(Boolean);
-    var n = Math.max(1, count || 5);
+    var n = Math.max(1, Math.floor(count || 5));
     if (!list.length) return [];
-    if (list.length <= n) return list.slice();
-    var groups = [];
-    var per = list.length / n;
-    for (var i = 0; i < n; i++) {
-      var a = Math.floor(i * per);
-      var b = Math.max(a + 1, Math.floor((i + 1) * per));
-      groups.push(list.slice(a, b).join(' '));
+    if (list.length === n) return list.slice();
+    if (list.length > n) {
+      var groups = [];
+      var per = list.length / n;
+      for (var i = 0; i < n; i++) {
+        var a = Math.floor(i * per);
+        var b = Math.max(a + 1, Math.floor((i + 1) * per));
+        groups.push(list.slice(a, b).join(' '));
+      }
+      return groups;
     }
-    return groups;
+    return list.slice(); /* 문단이 장면보다 적으면 호출한 쪽에서 문장으로 나눈다 */
+  }
+
+  /**
+   * 문단 목록 → 장면 수만큼의 텍스트 단위.
+   *  - 원래 순서를 절대 섞지 않는다.
+   *  - 문단이 모자라면 긴 문단을 문장 경계에서 나눠 채운다(내용 삭제 없음).
+   *  - 문단이 넘치면 이웃 문단을 순서대로 합친다(중간 내용 통째로 짤림 방지).
+   */
+  function sceneUnits(paragraphs, count) {
+    var units = [];
+    (paragraphs || []).forEach(function (p) {
+      var s = String(p || '').replace(/\s+/g, ' ').trim();
+      if (s) units.push(s);
+    });
+    var want = Math.max(1, Math.floor(count || 5));
+    var guard = 0;
+    while (units.length < want && guard++ < 80) {
+      var best = -1, bestLen = 0;
+      for (var i = 0; i < units.length; i++) {
+        var parts = splitScript(units[i]).filter(function (x) { return x && x.trim(); });
+        if (parts.length > 1 && units[i].length > bestLen) { best = i; bestLen = units[i].length; }
+      }
+      if (best < 0) break;
+      var sents = splitScript(units[best]).filter(function (x) { return x && x.trim(); });
+      if (sents.length < 2) break;
+      var total = sents.join(' ').length, acc = 0, cut = 1;
+      for (var k = 0; k < sents.length; k++) {
+        acc += sents[k].length + 1;
+        if (acc >= total / 2) { cut = Math.max(1, Math.min(sents.length - 1, k + 1)); break; }
+      }
+      var left = sents.slice(0, cut).join(' ').trim();
+      var right = sents.slice(cut).join(' ').trim();
+      if (!left || !right) break;
+      units.splice(best, 1, left, right);
+    }
+    /* 문장으로 더 못 나누면 쉼표·연결어미에서 한 번 더 나눈다 (15장면까지 채우기) */
+    var SEPS = [', ', '· ', ' — ', '고 ', '는데 ', '지만 ', '며 ', '서 ', '면 '];
+    function bestSplit(text) {
+      var mid = text.length / 2;
+      var bestAt = -1, bestDist = 1e9;
+      SEPS.forEach(function (sep) {
+        var from = 10;
+        while (true) {
+          var at = text.indexOf(sep, from);
+          if (at < 0) break;
+          if (at < 10 || at > text.length - 10) { from = at + 1; continue; }
+          var dist = Math.abs(at - mid);
+          if (dist < bestDist) { bestDist = dist; bestAt = at + sep.length; }
+          from = at + 1;
+        }
+      });
+      return bestAt;
+    }
+    guard = 0;
+    while (units.length < want && guard++ < 40) {
+      var pick = -1, pickLen = 0;
+      for (var u = 0; u < units.length; u++) {
+        if (units[u].length > 34 && units[u].length > pickLen && bestSplit(units[u]) > 0) { pick = u; pickLen = units[u].length; }
+      }
+      if (pick < 0) break;
+      var at = bestSplit(units[pick]);
+      var l = units[pick].slice(0, at).trim();
+      var r = units[pick].slice(at).replace(/^\s+/, '').trim();
+      if (!l || !r) break;
+      units.splice(pick, 1, l, r);
+    }
+    if (units.length > want) {
+      var out = [];
+      var per = units.length / want;
+      for (var j = 0; j < want; j++) {
+        var a = Math.floor(j * per);
+        var b = Math.max(a + 1, Math.floor((j + 1) * per));
+        out.push(units.slice(a, b).join(' '));
+      }
+      return out;
+    }
+    return units;
+  }
+
+  /** 글 길이로 장면 수를 추천한다. (짧은 글 5, 긴 글 12) */
+  function suggestSceneCount(article) {
+    var paras = (article && article.paragraphs) || [];
+    var chars = paras.join(' ').replace(/\s+/g, '').length;
+    if (!chars) return 5;
+    var byChars = Math.round(chars / 42);
+    var byParas = Math.round(paras.length * 1.4);
+    return clamp(Math.max(byChars, byParas), 5, 12);
   }
 
   /** 장면 문구 다듬기: 너무 길면 자르고, 끝의 마침표는 뗀다 */
   function sceneLine(text, limit) {
     var s = String(text || '').replace(/\s+/g, ' ').trim();
-    s = s.replace(/^(첫째|둘째|셋째|넷째|다섯째|여섯째|마지막으로|우선|먼저)[,.]?\s*/, '');
+    s = s.replace(/^(첫째|둘째|셋째|넷째|다섯째|여섯째|일곱째|여덟째|아홉째|열째|마지막으로|우선|먼저)[,.]?\s*/, '');
     s = s.replace(/[.。]+$/, '');
     if (limit && s.length > limit) {
       var cut = s.slice(0, limit - 1);
-      var comma = Math.max(cut.lastIndexOf(','), cut.lastIndexOf('·'), cut.lastIndexOf('—'));
+      var comma = Math.max(cut.lastIndexOf(','), cut.lastIndexOf('·'), cut.lastIndexOf('—'), cut.lastIndexOf(' '));
       if (comma >= Math.floor(limit * 0.45)) cut = cut.slice(0, comma);
       else cut = cut.replace(/\s+\S*$/, '');
       s = cut.trim() + '…';
@@ -1751,45 +1863,53 @@
     return false;
   }
 
-  /** 블로그 글 → 5장면 초안(로컬 규칙). AI가 없어도 항상 같은 모양으로 답한다. */
+  /** 한 장면의 문구 묶음 — 제목·부제·자막·사진 검색어 */
+  function composeScene(text, index, total) {
+    var body = String(text || '').replace(/\s+/g, ' ').trim();
+    var sents = splitScript(body).filter(function (x) { return x && x.trim(); });
+    if (!sents.length && body) sents = [body];
+    var head = '';
+    for (var i = 0; i < sents.length; i++) {
+      if (!isWeakLine(sents[i])) { head = sents[i]; break; }
+    }
+    if (!head) head = sents[0] || body;
+    var rest = sents.filter(function (x) { return x !== head; }).join(' ');
+    var caption = sents.length && sents[0] === head ? (sents[1] || head) : (sents[0] || head);
+    /* 자막은 화면 아래 한두 줄이라 너무 길면 두 문장까지만 */
+    if (caption && caption.length < 12 && rest) caption = caption + ' ' + rest;
+    var q = paragraphsKeyPhrase(body) || keyPhrases([body], 1)[0] || '';
+    return {
+      kicker: ('0' + (index + 1)).slice(-2),
+      headline: sceneLine(head, index === 0 ? 30 : 34),
+      sub: index === 0 ? '' : sceneLine(rest, 64),
+      caption: sceneLine(caption || head, 52),
+      imageQuery: q
+    };
+  }
+
+  /** 블로그 글 → 3~15장면 초안(로컬 규칙). 순서 보존·문단 누락 없음. */
   function localFilmScript(article, opts) {
     var o = opts || {};
-    var count = clamp(o.count || 5, 3, 6);
+    var count = clamp(o.count || suggestSceneCount(article), 3, 15);
     var title = String((article && article.title) || '').trim() || '블로그 글';
-    var paras = (article && article.paragraphs) || [];
-    var groups = groupParagraphs(paras, count);
-    var first = groups[0] || title;
-    if (groups.length) {
-      /* 첫 장면 훅은 날짜·숫자 위주 줄을 피해 고른다 */
-      for (var gi = 0; gi < groups.length; gi++) {
-        if (!isWeakLine(groups[gi])) { first = groups[gi]; break; }
-      }
-    }
-    var hookText = sceneLine(first, 46);
+    var paras = ((article && article.paragraphs) || []).filter(Boolean);
+    var units = sceneUnits(paras, count);
     var scenes = [];
-    for (var i = 0; i < count; i++) {
-      var body = groups[i] || '';
-      var sentences = splitScript(body);
-      var head = sentences[0] || title;
-      for (var si = 0; si < sentences.length; si++) {
-        if (!isWeakLine(sentences[si])) { head = sentences[si]; rest = sentences.filter(function (x) { return x !== head; }).join(' '); break; }
-      }
-      var rest = rest || sentences.slice(1).join(' ');
-      var q = paragraphsKeyPhrase(body) || keyPhrases([body], 1)[0] || title;
-      scenes.push({
-        kicker: ('0' + (i + 1)).slice(-2),
-        headline: i === 0 ? sceneLine(hookText, 34) : sceneLine(head, 34),
-        sub: i === 0 ? '' : sceneLine(rest, 64),
-        caption: sceneLine(i === 0 ? first : head, 46),
-        imageQuery: q
-      });
+    if (!units.length) {
+      units = [title];
     }
+    for (var i = 0; i < units.length; i++) {
+      scenes.push(composeScene(units[i], i, units.length));
+    }
+    /* 첫 장면은 글의 도입부에서 훅을 잡는다 */
+    var hookText = sceneLine(units[0] || title, 46);
     return {
       title: title,
       hook: hookText,
       scenes: scenes,
       hashtags: normalizeTags(keyPhrases(paras, 4).map(function (p) { return p.replace(/\s+/g, ''); })).slice(0, 3),
-      source: 'local'
+      source: 'local',
+      requested: count
     };
   }
 
@@ -1808,17 +1928,21 @@
 
   function buildFilmPrompt(meta) {
     var m = meta || {};
-    var count = clamp(m.count || 5, 3, 6);
-    var body = String(m.body || '').slice(0, 2600);
+    var count = clamp(m.count || 7, 3, 15);
+    var body = String(m.body || '').slice(0, 6000);
     var system = '너는 한국어 숏폼 대본 작가다. 주어진 글에 없는 사실을 만들지 않는다. ' +
       '문장은 짧고 구어체로 쓰고, AI 말투(음.., ~임, ~라는 점에서)를 쓰지 않는다.';
     var prompt = [
-      '아래 블로그 글을 ' + count + '장면짜리 9:16 카드 쇼츠 대본으로 바꿔라.',
-      '규칙:',
-      '- 첫 장면은 훅(궁금증·숫자·반전). 마지막 장면은 한 줄 정리나 행동 제안.',
+      '아래 블로그 글을 정확히 ' + count + '장면짜리 9:16 카드 쇼츠 대본으로 바꿔라.',
+      '가장 중요한 규칙 — 글의 흐름과 순서:',
+      '- 글을 도입 → 본문(소제목·항목 순서 그대로) → 마무리 순서로 읽으며 나눈다.',
+      '- 장면 순서를 절대 뒤섞지 않는다. 본문 중간을 통째로 건너뛰지 않는다.',
+      '- 모든 문단의 핵심이 어느 장면엔가 반드시 들어가야 한다.',
+      '- 첫 장면은 글의 도입부에서 훅(궁금증·숫자·반전). 마지막 장면은 글의 마무리·행동 제안.',
+      '문장 규칙:',
       '- headline은 화면에 크게 올릴 22자 이내 한 문장.',
       '- sub는 headline을 받쳐 줄 40자 이내 한 문장(없으면 빈 문자열).',
-      '- caption은 화면 아래 자막 1~2줄, 32자 이내. 말하듯 쓴다.',
+      '- caption은 화면 아래 자막 1~2줄, 32자 이내. 말하듯 쓴다. headline을 그대로 반복하지 않는다.',
       '- imageQuery는 장면에 어울리는 사진 검색어 2~4단어(한국어).',
       '- 글에 없는 숫자·효과·후기를 지어내지 않는다.',
       'JSON만 출력: {"title":"...","hook":"...","scenes":[{"headline":"...","sub":"...","caption":"...","imageQuery":"..."}],"hashtags":["..."]}',
@@ -1850,7 +1974,7 @@
       /* 장면 배열이 없으면 본문 문단으로 대신한다 */
       return { ok: false, scenes: [], reason: 'no_scenes' };
     }
-    var max = clamp(o.count || 5, 3, 6);
+    var max = clamp(o.count || 15, 3, 15);
     var scenes = [];
     list.slice(0, max).forEach(function (s, i) {
       if (!s || typeof s !== 'object') return;
@@ -1868,6 +1992,7 @@
     });
     scenes = scenes.filter(function (s) { return s.headline || s.caption; });
     if (scenes.length < 3) return { ok: false, scenes: scenes, reason: 'too_few' };
+    if (o.count && scenes.length < Math.min(3, o.count)) return { ok: false, scenes: scenes, reason: 'too_few' };
     return {
       ok: true,
       title: String(obj.title || o.title || '').slice(0, 120),
@@ -2088,11 +2213,16 @@
     scriptToCuesByDuration: scriptToCuesByDuration,
     localHook: localHook,
     FILM_THEMES: FILM_THEMES,
+    FILM_LAYOUTS: FILM_LAYOUTS,
+    SUBTITLE_DEFAULT: SUBTITLE_DEFAULT,
     DEMO_ARTICLE: DEMO_ARTICLE,
     cleanArticleText: cleanArticleText,
     groupParagraphs: groupParagraphs,
     sceneLine: sceneLine,
     localFilmScript: localFilmScript,
+    sceneUnits: sceneUnits,
+    suggestSceneCount: suggestSceneCount,
+    composeScene: composeScene,
     buildFilmPrompt: buildFilmPrompt,
     parseFilmJSON: parseFilmJSON,
     filmSceneMs: filmSceneMs,

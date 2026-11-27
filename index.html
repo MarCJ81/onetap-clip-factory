@@ -708,11 +708,35 @@
             <label class="mini-field" for="sel-tts">
               <span>더빙</span>
               <select id="sel-tts">
-                <option value="silent" selected>무음 (자막 타이밍)</option>
-                <option value="browser">브라우저 음성 (미리 듣기만)</option>
+                <option value="edge" selected>무료 한국어 성우 (Edge TTS)</option>
                 <option value="fish">Fish Audio 성우 (내 키)</option>
+                <option value="browser">브라우저 음성 (미리 듣기만)</option>
+                <option value="silent">무음 (자막 타이밍)</option>
               </select>
             </label>
+            <div id="edge-fields">
+              <label class="mini-field" for="sel-edge-voice">
+                <span>성우</span>
+                <select id="sel-edge-voice"></select>
+              </label>
+              <div class="field-row">
+                <label class="mini-field" for="rg-edge-rate">
+                  <span>말 속도</span>
+                  <select id="rg-edge-rate">
+                    <option value="-15%">느리게</option>
+                    <option value="+0%" selected>보통</option>
+                    <option value="+12%">빠르게</option>
+                    <option value="+25%">아주 빠르게</option>
+                  </select>
+                </label>
+                <label class="mini-field" for="inp-edge-proxy">
+                  <span>성우 서버</span>
+                  <input type="url" id="inp-edge-proxy" placeholder="https://onetap-fish-proxy.onetap-ai.workers.dev" spellcheck="false" />
+                </label>
+              </div>
+              <p class="hint">키 없이 무료입니다. 첫 장면을 미리 들어 보고 마음에 드는 성우를 고르세요.</p>
+              <button type="button" class="btn btn-soft btn-sm" id="btn-edge-test">첫 장면 목소리 미리 듣기</button>
+            </div>
             <div id="fish-fields" hidden>
               <label class="mini-field" for="inp-fish-key">
                 <span>Fish 키</span>
@@ -749,8 +773,12 @@
             <label class="mini-field" for="sel-bgm">
               <span>BGM</span>
               <select id="sel-bgm">
-                <option value="calm" selected>차분한 패드</option>
-                <option value="beat">가벼운 비트</option>
+                <option value="lofi" selected>Lo-fi Chill</option>
+                <option value="upbeat">Upbeat Vlog</option>
+                <option value="cinematic">Cinematic Tension</option>
+                <option value="news">News Briefing</option>
+                <option value="playful">Playful Marimba</option>
+                <option value="warm">Warm Acoustic</option>
                 <option value="upload">내 파일</option>
                 <option value="none">없음</option>
               </select>
@@ -776,6 +804,10 @@
           </header>
           <div class="panel-body">
             <div class="seg" id="film-themes" role="radiogroup" aria-label="카드 테마"></div>
+            <label class="mini-field" for="sel-film-layout">
+              <span>숏폼 레이아웃</span>
+              <select id="sel-film-layout"></select>
+            </label>
             <label class="mini-field" for="sel-film-caption">
               <span>자막 스타일</span>
               <select id="sel-film-caption"></select>
@@ -783,23 +815,89 @@
             <div class="field-row">
               <label class="mini-field" for="sel-film-count">
                 <span>장면 수</span>
-                <select id="sel-film-count">
-                  <option value="3">3장면</option>
-                  <option value="4">4장면</option>
-                  <option value="5" selected>5장면</option>
-                  <option value="6">6장면</option>
-                </select>
+                <select id="sel-film-count"></select>
               </label>
               <label class="mini-field" for="sel-film-preset">
                 <span>해상도</span>
                 <select id="sel-film-preset"></select>
               </label>
             </div>
+            <div class="sub-controls" id="sub-controls">
+              <div class="sub-head">
+                <strong>자막 조절</strong>
+                <button type="button" class="link-btn muted" id="btn-sub-reset">기본값</button>
+              </div>
+              <div class="field-row">
+                <label class="mini-field" for="rg-sub-size">
+                  <span>크기 <output id="out-sub-size">64px</output></span>
+                  <input type="range" id="rg-sub-size" min="28" max="104" step="2" value="64" />
+                </label>
+                <label class="mini-field" for="sel-sub-pos">
+                  <span>세로 위치</span>
+                  <select id="sel-sub-pos">
+                    <option value="top">상단</option>
+                    <option value="center">중앙</option>
+                    <option value="bottom" selected>하단</option>
+                    <option value="custom">직접 (%)</option>
+                  </select>
+                </label>
+              </div>
+              <label class="mini-field" for="rg-sub-pos">
+                <span>위치 <output id="out-sub-pos">84%</output></span>
+                <input type="range" id="rg-sub-pos" min="6" max="94" step="1" value="84" />
+              </label>
+              <div class="field-row sub-colors">
+                <label class="mini-field" for="inp-sub-color">
+                  <span>글자색</span>
+                  <input type="color" id="inp-sub-color" value="#ffffff" />
+                </label>
+                <label class="mini-field" for="inp-sub-stroke">
+                  <span>테두리색</span>
+                  <input type="color" id="inp-sub-stroke" value="#0a0a0b" />
+                </label>
+                <label class="mini-field" for="inp-sub-box">
+                  <span>배경색</span>
+                  <input type="color" id="inp-sub-box" value="#08090b" />
+                </label>
+              </div>
+              <div class="field-row">
+                <label class="mini-field" for="rg-sub-stroke">
+                  <span>테두리 두께 <output id="out-sub-stroke">8</output></span>
+                  <input type="range" id="rg-sub-stroke" min="0" max="20" step="1" value="8" />
+                </label>
+                <label class="switch-row compact" for="tg-sub-box">
+                  <span class="switch-copy"><strong>자막 배경</strong><small>반투명 박스</small></span>
+                  <input type="checkbox" id="tg-sub-box" class="switch" />
+                  <span class="switch-ui" aria-hidden="true"></span>
+                </label>
+              </div>
+            </div>
           </div>
         </section>
       </aside>
 
       <div class="blog-stage">
+        <section class="panel ref-panel">
+          <header class="panel-head">
+            <span class="panel-no">REF</span>
+            <h2>숏폼 레퍼런스</h2>
+            <span class="panel-tag" id="ref-tag">YouTube</span>
+          </header>
+          <div class="panel-body">
+            <p class="hint">키워드로 실제 인기 쇼츠를 모아 리듬·길이를 내 영상에 맞춥니다. YouTube Data API 키는 무료이며 이 브라우저에만 저장됩니다.</p>
+            <div class="url-row">
+              <input type="search" id="ref-query" placeholder="예: 중고 노트북, 자취 요리" spellcheck="false" />
+              <button type="button" class="btn btn-soft btn-sm" id="btn-ref-search">수집</button>
+            </div>
+            <label class="mini-field" for="inp-yt-key" hidden id="yt-key-field">
+              <span>YouTube Data API 키 (무료)</span>
+              <input type="password" id="inp-yt-key" autocomplete="off" placeholder="AIza..." />
+            </label>
+            <p class="hint" id="ref-note">키가 없으면 키 입력칸이 열립니다. 영상 길이·조회수·훅 문장을 목록에서 고르면 프리셋이 적용됩니다.</p>
+            <div class="ref-list" id="ref-list"></div>
+          </div>
+        </section>
+
         <section class="panel film-script-panel">
           <header class="panel-head">
             <span class="panel-no">04</span>
