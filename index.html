@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>원탭 클립 팩토리 — 긴 영상 → 9:16 숏폼 클립 공장</title>
-<meta name="description" content="긴 가로 영상(강의·브이로그·게임·인터뷰)을 넣으면 무음(죽은 초)을 지우고, 장면 컷을 찾아 15초 내외 클립으로 나누고, 9:16으로 피사체를 따라 리프레임한 뒤 자막까지 얹어 브라우저에서 실제 H.264 MP4 여러 개로 뽑아 줍니다. 자막(.srt/.vtt)을 넣으면 AI가 스토리·재미·반전 구간을 골라 클립으로 만들고, 원본 대사를 베끼지 않은 AI 해설 자막까지 새로 씁니다. 가입 없음, 영상 서버 전송 없음." />
+<title>원탭 클립 팩토리 — 영상 자동컷 · 블로그 → 9:16 숏폼 쇼츠</title>
+<meta name="description" content="영상 하나면 무음 컷·9:16 리프레임·카라오케 자막까지 자동으로 9:16 숏폼 MP4 여러 개를, 블로그 URL 하나면 5장면 카드 쇼츠를 만들어 주는 브라우저 완결 도구. 내 무료 Gemini 키·Fish Audio 성우 더빙은 선택. 가입 없음, 영상 서버 전송 없음." />
 <meta name="theme-color" content="#06070A" />
 <meta name="color-scheme" content="dark light" />
 <link rel="canonical" href="https://marcj81.github.io/onetap-clip-factory/" />
@@ -36,12 +36,17 @@
     </a>
 
     <nav class="tabs" role="tablist" aria-label="주요 화면">
-      <button class="tab is-active" role="tab" aria-selected="true" aria-controls="view-factory" id="tab-factory" data-tab="factory">공장</button>
+      <button class="tab is-active" role="tab" aria-selected="true" aria-controls="view-factory" id="tab-factory" data-tab="factory">영상 자동컷</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="view-blog" id="tab-blog" data-tab="blog">블로그 쇼츠</button>
       <button class="tab" role="tab" aria-selected="false" aria-controls="view-clips" id="tab-clips" data-tab="clips">클립 <span class="tab-count" id="tab-clip-count">0</span></button>
       <button class="tab" role="tab" aria-selected="false" aria-controls="view-guide" id="tab-guide" data-tab="guide">가이드</button>
     </nav>
 
     <div class="top-actions">
+      <button type="button" class="pro-badge key-badge" id="btn-gemini" aria-haspopup="dialog" title="내 무료 Gemini 키">
+        <span class="dot" aria-hidden="true"></span>
+        <span id="gemini-badge-label">Gemini 키</span>
+      </button>
       <button type="button" class="pro-badge" id="btn-pro-badge" aria-haspopup="dialog" title="Pro 연결 상태">
         <span class="dot" aria-hidden="true"></span>
         <span id="pro-badge-label">무료 모드</span>
@@ -85,7 +90,58 @@
     <div class="workbench">
 
       <!-- ── 왼쪽 레일 ── -->
-      <aside class="rail" aria-label="스토리·감지·리프레임·자막 설정">
+      <aside class="rail" aria-label="자동·스토리·감지·리프레임·자막 설정">
+
+        <section class="panel auto-panel" id="panel-auto">
+          <header class="panel-head">
+            <span class="panel-no">AUTO</span>
+            <h2>원버튼 자동 쇼츠</h2>
+            <span class="panel-tag" id="auto-tag">영상 → 9:16</span>
+          </header>
+          <div class="panel-body">
+            <div class="auto-grid">
+              <label class="mini-field" for="sel-auto-crop">
+                <span>세로 크롭</span>
+                <select id="sel-auto-crop">
+                  <option value="subject" selected>피사체 추적</option>
+                  <option value="center">중앙 고정</option>
+                  <option value="blur">블러 배경</option>
+                </select>
+              </label>
+              <label class="mini-field" for="sel-auto-silence">
+                <span>무음 컷</span>
+                <select id="sel-auto-silence">
+                  <option value="0">자르지 않음</option>
+                  <option value="400">0.4초 이상</option>
+                  <option value="600" selected>0.6초 이상</option>
+                  <option value="1000">1.0초 이상</option>
+                </select>
+              </label>
+              <label class="mini-field" for="sel-auto-count">
+                <span>클립 수</span>
+                <select id="sel-auto-count">
+                  <option value="2">2개</option>
+                  <option value="3" selected>3개</option>
+                  <option value="5">5개</option>
+                </select>
+              </label>
+            </div>
+            <label class="switch-row compact" for="tg-auto-ai">
+              <span class="switch-copy"><strong>AI 제목·훅</strong><small>Gemini 키 → 무료 맛보기 → 규칙</small></span>
+              <input type="checkbox" id="tg-auto-ai" class="switch" checked />
+              <span class="switch-ui" aria-hidden="true"></span>
+            </label>
+            <button type="button" class="btn btn-primary btn-block" id="btn-auto-run" disabled>원버튼으로 쇼츠 만들기</button>
+            <p class="hint" id="auto-hint">영상을 넣으면 무음 컷 → 9:16 → 자막 → 제목·훅 → MP4까지 한 번에 갑니다.</p>
+            <ol class="auto-steps" id="auto-steps">
+              <li data-step="analyze"><i aria-hidden="true"></i><span>원본 분석</span></li>
+              <li data-step="cut"><i aria-hidden="true"></i><span>무음 컷</span></li>
+              <li data-step="crop"><i aria-hidden="true"></i><span>9:16 크롭</span></li>
+              <li data-step="text"><i aria-hidden="true"></i><span>자막·제목·훅</span></li>
+              <li data-step="render"><i aria-hidden="true"></i><span>MP4 렌더</span></li>
+            </ol>
+          </div>
+        </section>
 
         <section class="panel story-panel" id="panel-story">
           <header class="panel-head">
@@ -212,6 +268,7 @@
               <button type="button" class="seg-btn is-active" role="radio" aria-checked="true" data-mode="subject">피사체 추적</button>
               <button type="button" class="seg-btn" role="radio" aria-checked="false" data-mode="motion">움직임 추적</button>
               <button type="button" class="seg-btn" role="radio" aria-checked="false" data-mode="center">중앙 고정</button>
+              <button type="button" class="seg-btn" role="radio" aria-checked="false" data-mode="blur">블러 배경</button>
             </div>
             <p class="mode-note" id="mode-note">피부톤 + 움직임 + 중앙 가중으로 크롭 중심을 부드럽게 따라갑니다.</p>
 
@@ -263,6 +320,16 @@
             </div>
             <input type="file" id="srt-input" accept=".srt,.vtt,text/plain" hidden />
             <p class="hint" id="caption-note">음성 인식은 넣지 않았습니다. 쓰던 자막 파일을 그대로 올리면 타임코드까지 살립니다.</p>
+
+            <div class="script-box">
+              <label class="script-label" for="ta-script">대본 → 자막 자동 배분</label>
+              <textarea id="ta-script" rows="3" spellcheck="false" placeholder="영상에서 말한 대본을 붙여넣으면 말소리 구간에 맞춰 자막 타임코드를 만듭니다."></textarea>
+              <div class="btn-row">
+                <button type="button" class="btn btn-soft btn-sm" id="btn-script-apply">말소리 구간에 배분</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="btn-script-clear">지우기</button>
+              </div>
+              <p class="hint" id="script-status">자막 파일이 없어도 됩니다. 배분한 뒤 타임코드는 직접 고칠 수 있습니다.</p>
+            </div>
           </div>
         </section>
       </aside>
@@ -578,6 +645,210 @@
     </div>
   </section>
 
+  <!-- ══════════════════════ 블로그 → 쇼츠 ══════════════════════ -->
+  <section class="view" id="view-blog" role="tabpanel" aria-labelledby="tab-blog" hidden>
+    <div class="page-head blog-head">
+      <div>
+        <p class="kicker"><span class="live-dot" aria-hidden="true"></span> BLOG → SHORTS · 9:16</p>
+        <h1>블로그 글 하나, <em>카드 쇼츠 하나.</em></h1>
+        <p class="lead narrow">URL이나 본문을 넣으면 5장면 대본·화면 제목·자막·더빙을 만들고, 실제 H.264 MP4로 뽑습니다. 막힌 블로그는 붙여넣기로 바로 넘어갑니다.</p>
+      </div>
+      <div class="page-head-actions">
+        <button type="button" class="btn btn-soft" id="btn-blog-demo">샘플 글로 체험</button>
+        <button type="button" class="btn btn-primary" id="btn-blog-top-render">9:16 MP4 렌더</button>
+      </div>
+    </div>
+
+    <div class="blog-grid">
+      <aside class="blog-rail">
+        <section class="panel" id="panel-blog-source">
+          <header class="panel-head">
+            <span class="panel-no">01</span>
+            <h2>글 가져오기</h2>
+            <span class="panel-tag" id="blog-src-tag">URL · 붙여넣기</span>
+          </header>
+          <div class="panel-body">
+            <div class="url-row">
+              <input type="url" id="blog-url" placeholder="https://blog.naver.com/아이디/글번호" spellcheck="false" />
+              <button type="button" class="btn btn-soft btn-sm" id="btn-blog-fetch">읽기</button>
+            </div>
+            <p class="hint" id="blog-fetch-note">무료 읽기 프록시(r.jina.ai)로 제목·본문·사진을 가져옵니다. 막히면 아래에 본문을 붙여넣으세요.</p>
+            <label class="script-label" for="blog-text">본문 붙여넣기 <span class="mono-label">CTRL+V</span></label>
+            <textarea id="blog-text" rows="6" spellcheck="false" placeholder="블로그 글을 그대로 붙여넣으세요. 첫 줄은 제목으로 씁니다."></textarea>
+            <div class="btn-row">
+              <button type="button" class="btn btn-soft btn-sm" id="btn-blog-use">이 본문으로</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-blog-clear">비우기</button>
+            </div>
+            <div class="blog-meta" id="blog-meta">아직 글이 없습니다.</div>
+            <div class="blog-thumbs" id="blog-thumbs"></div>
+            <input type="file" id="blog-images" accept="image/*" multiple hidden />
+            <div class="btn-row">
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-blog-images">내 사진 넣기</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-blog-pexels">Pexels로 찾기</button>
+            </div>
+            <label class="mini-field" for="inp-pexels-key" hidden id="pexels-field">
+              <span>Pexels 무료 키</span>
+              <input type="password" id="inp-pexels-key" autocomplete="off" placeholder="선택 · 넣으면 장면 사진을 찾아 줍니다" />
+            </label>
+            <label class="switch-row compact" for="tg-blog-images">
+              <span class="switch-copy"><strong>글 사진 쓰기</strong><small>없으면 그라데이션 카드</small></span>
+              <input type="checkbox" id="tg-blog-images" class="switch" checked />
+              <span class="switch-ui" aria-hidden="true"></span>
+            </label>
+          </div>
+        </section>
+
+        <section class="panel" id="panel-blog-voice">
+          <header class="panel-head">
+            <span class="panel-no">02</span>
+            <h2>목소리 · BGM</h2>
+            <span class="panel-tag" id="tts-tag">무음 자막</span>
+          </header>
+          <div class="panel-body">
+            <label class="mini-field" for="sel-tts">
+              <span>더빙</span>
+              <select id="sel-tts">
+                <option value="silent" selected>무음 (자막 타이밍)</option>
+                <option value="browser">브라우저 음성 (미리 듣기만)</option>
+                <option value="fish">Fish Audio 성우 (내 키)</option>
+              </select>
+            </label>
+            <div id="fish-fields" hidden>
+              <label class="mini-field" for="inp-fish-key">
+                <span>Fish 키</span>
+                <input type="password" id="inp-fish-key" autocomplete="off" placeholder="Bearer 없이 키만" />
+              </label>
+              <div class="field-row">
+                <label class="mini-field" for="sel-fish-model">
+                  <span>모델</span>
+                  <select id="sel-fish-model">
+                    <option value="s2.1-pro-free" selected>s2.1-pro-free (무료)</option>
+                    <option value="s2.1-pro">s2.1-pro</option>
+                  </select>
+                </label>
+                <label class="mini-field" for="inp-fish-voice">
+                  <span>보이스 ID</span>
+                  <input type="text" id="inp-fish-voice" autocomplete="off" placeholder="선택" />
+                </label>
+              </div>
+              <label class="mini-field" for="inp-fish-proxy">
+                <span>프록시 주소 (선택)</span>
+                <input type="url" id="inp-fish-proxy" placeholder="https://내-worker.workers.dev" spellcheck="false" />
+              </label>
+              <p class="hint" id="fish-note">브라우저에서 api.fish.audio로 직접 붙으면 CORS로 막힙니다. 내 프록시를 넣거나 무음 모드로 두세요.</p>
+              <button type="button" class="btn btn-soft btn-sm" id="btn-tts-test">첫 장면 목소리 미리 듣기</button>
+            </div>
+            <label class="mini-field" for="sel-bgm">
+              <span>BGM</span>
+              <select id="sel-bgm">
+                <option value="calm" selected>차분한 패드</option>
+                <option value="beat">가벼운 비트</option>
+                <option value="upload">내 파일</option>
+                <option value="none">없음</option>
+              </select>
+            </label>
+            <input type="file" id="bgm-file" accept="audio/*" hidden />
+            <div class="field">
+              <div class="field-head"><label for="rg-bgm">BGM 볼륨</label><output id="out-bgm">18%</output></div>
+              <input type="range" id="rg-bgm" min="0" max="60" step="1" value="18" />
+            </div>
+            <label class="switch-row compact" for="tg-duck">
+              <span class="switch-copy"><strong>말할 때 BGM 줄이기</strong><small>덕킹</small></span>
+              <input type="checkbox" id="tg-duck" class="switch" checked />
+              <span class="switch-ui" aria-hidden="true"></span>
+            </label>
+          </div>
+        </section>
+
+        <section class="panel" id="panel-blog-look">
+          <header class="panel-head">
+            <span class="panel-no">03</span>
+            <h2>모양</h2>
+            <span class="panel-tag">LOOK</span>
+          </header>
+          <div class="panel-body">
+            <div class="seg" id="film-themes" role="radiogroup" aria-label="카드 테마"></div>
+            <label class="mini-field" for="sel-film-caption">
+              <span>자막 스타일</span>
+              <select id="sel-film-caption"></select>
+            </label>
+            <div class="field-row">
+              <label class="mini-field" for="sel-film-count">
+                <span>장면 수</span>
+                <select id="sel-film-count">
+                  <option value="3">3장면</option>
+                  <option value="4">4장면</option>
+                  <option value="5" selected>5장면</option>
+                  <option value="6">6장면</option>
+                </select>
+              </label>
+              <label class="mini-field" for="sel-film-preset">
+                <span>해상도</span>
+                <select id="sel-film-preset"></select>
+              </label>
+            </div>
+          </div>
+        </section>
+      </aside>
+
+      <div class="blog-stage">
+        <section class="panel film-script-panel">
+          <header class="panel-head">
+            <span class="panel-no">04</span>
+            <h2>장면 대본</h2>
+            <span class="panel-tag" id="film-script-tag">AI · Gemini</span>
+            <div class="head-actions">
+              <button type="button" class="link-btn" id="btn-film-ai">AI로 쓰기</button>
+              <button type="button" class="link-btn muted" id="btn-film-local">규칙 초안</button>
+            </div>
+          </header>
+          <div class="panel-body">
+            <p class="hint" id="film-script-note">글을 넣고 AI로 쓰기를 누르면 장면마다 화면 제목·자막·사진 검색어를 만듭니다. AI가 없으면 규칙 초안이 나옵니다.</p>
+            <div class="scene-list" id="scene-list">
+              <div class="empty-state small"><p>글이 없습니다. 위에서 URL을 읽거나 본문을 붙여넣으세요.</p></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel film-preview-panel">
+          <header class="panel-head">
+            <span class="panel-no">05</span>
+            <h2>9:16 미리보기</h2>
+            <span class="panel-tag" id="film-time">00:00 / 00:00</span>
+          </header>
+          <div class="panel-body film-preview-body">
+            <div class="phone film-phone">
+              <div class="phone-screen">
+                <canvas id="film-canvas" width="540" height="960" role="img" aria-label="카드 쇼츠 9:16 미리보기"></canvas>
+                <div class="preview-empty" id="film-empty">
+                  <span class="empty-glyph" aria-hidden="true">9:16</span>
+                  <p>글을 넣으면<br />여기서 재생됩니다</p>
+                </div>
+                <div class="safe-area show-safe" aria-hidden="true"><i class="safe-top"></i><i class="safe-bottom"></i></div>
+              </div>
+              <div class="phone-notch" aria-hidden="true"></div>
+            </div>
+            <div class="film-controls">
+              <button type="button" class="icon-btn play" id="btn-film-play" aria-label="미리보기 재생" disabled>
+                <svg class="ico-play" viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M6.5 4.2v11.6L16 10z" fill="currentColor"/></svg>
+                <svg class="ico-pause" viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M5.5 4.5h3v11h-3zM11.5 4.5h3v11h-3z" fill="currentColor"/></svg>
+              </button>
+              <input type="range" id="film-scrub" min="0" max="1000" value="0" step="1" aria-label="미리보기 위치" disabled />
+              <span class="mono-label" id="film-scene-chip">SCENE —</span>
+            </div>
+            <div class="film-render-row">
+              <button type="button" class="btn btn-primary" id="btn-film-render" disabled>9:16 MP4 렌더</button>
+              <button type="button" class="btn btn-ghost" id="btn-film-cancel" hidden>취소</button>
+              <button type="button" class="btn btn-accent" id="btn-film-download" hidden>MP4 받기</button>
+            </div>
+            <p class="render-summary" id="film-render-summary">글 → 장면 대본 → MP4</p>
+            <div class="cap-note" id="film-cap-note"></div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </section>
+
   <!-- ══════════════════════ 가이드 ══════════════════════ -->
   <section class="view" id="view-guide" role="tabpanel" aria-labelledby="tab-guide" hidden>
     <div class="page-head">
@@ -602,18 +873,30 @@
       </section>
 
       <section class="panel guide-card">
-        <header class="panel-head"><span class="panel-no">02</span><h2>솔직한 한계</h2></header>
+        <header class="panel-head"><span class="panel-no">02</span><h2>V2 · 두 가지 자동 모드</h2></header>
+        <ol class="steps">
+          <li><strong>영상 자동컷</strong><span>영상을 넣고 “원버튼으로 쇼츠 만들기”를 누르면 ① 소리·장면 분석 ② 설정한 길이(기본 0.6초) 이상 무음 컷 ③ 9:16 크롭(피사체·중앙·블러 배경) ④ 대본을 말소리 구간에 배분한 카라오케 자막 ⑤ 제목·훅 ⑥ MP4 렌더까지 자동으로 갑니다. 중간 결과는 카드에서 직접 고칠 수 있습니다.</span></li>
+          <li><strong>블로그 → 쇼츠</strong><span>URL을 넣으면 읽기 프록시가 제목·본문·사진을 가져오고, AI(또는 규칙)가 5장면 대본을 씁니다. 장면마다 화면 제목·자막·사진을 붙이고, 캔번즈 줌·팬과 BGM 덕킹을 넣어 9:16 MP4로 뽑습니다.</span></li>
+          <li><strong>더빙 3단</strong><span>무음(자막 타이밍, 0원) · 브라우저 음성(미리 듣기만) · Fish Audio 성우(s2.1-pro-free / s2.1-pro, 내 키). 브라우저 직접 호출이 CORS로 막히면 프록시 주소를 넣습니다.</span></li>
+          <li><strong>GeminiCore</strong><span>내 무료 Gemini 키를 x-goog-api-key 헤더로 부르고, 모델이 없거나 429·503이면 다음 모델로 넘어갑니다. 키가 없으면 무료 맛보기 → 규칙 순서로 내려가므로 버튼이 먹통이 되지 않습니다.</span></li>
+        </ol>
+      </section>
+
+      <section class="panel guide-card">
+        <header class="panel-head"><span class="panel-no">03</span><h2>솔직한 한계</h2></header>
         <ul class="plain-list">
           <li>얼굴 인식 모델은 넣지 않았습니다. 피부톤·움직임 추적은 가볍고 빠르지만, 얼굴이 작거나 피부색이 배경과 비슷하면 중앙 쪽으로 돌아갑니다.</li>
-          <li>음성 인식(자동 자막)은 없습니다. 쓰던 SRT/VTT를 올리거나 직접 입력하세요.</li>
+          <li>음성 인식(자동 자막)은 없습니다. 쓰던 SRT/VTT를 올리거나, 대본을 붙여넣어 말소리 구간에 배분하세요. 배분은 글자 수 비례라 실제 발음과 몇백 ms 어긋날 수 있습니다.</li>
+          <li>블로그 읽기는 공개 읽기 프록시에 기대므로, 막는 블로그는 붙여넣기로 넘어갑니다. 사진은 캔버스 오염을 막기 위해 이미지 프록시를 거칩니다.</li>
+          <li>Fish Audio는 브라우저에서 직접 부르면 CORS로 막힙니다. 프록시(내 Worker)가 필요하고, 실패하면 무음 모드로 내려갑니다.</li>
           <li>장면 컷은 히스토그램 표본 기반이라, 화면이 서서히 밝아지는 구간은 놓칠 수 있습니다.</li>
           <li>유튜브 링크는 브라우저에서 직접 받을 수 없습니다. yt-dlp로 받은 파일을 끌어다 놓으세요.</li>
-          <li>긴 영상은 프레임 표본을 최대 240개로 제한합니다(파형은 전체를 계산).</li>
+          <li>긴 영상은 프레임 표본을 최대 260개로 제한합니다(파형은 전체를 계산).</li>
         </ul>
       </section>
 
       <section class="panel guide-card">
-        <header class="panel-head"><span class="panel-no">03</span><h2>YouTube에서 가져오기</h2></header>
+        <header class="panel-head"><span class="panel-no">04</span><h2>YouTube에서 가져오기</h2></header>
         <p class="hint">내 컴퓨터에 <code>yt-dlp</code>가 있다면 아래 한 줄이면 영상과 자막(.srt)을 함께 받습니다. 받은 파일을 공장에 끌어다 놓으세요.</p>
         <code class="cmd block">yt-dlp -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]" --write-subs --write-auto-subs --sub-langs "ko.*,en.*" --convert-subs srt -o "%(title)s.%(ext)s" "https://www.youtube.com/watch?v=..."</code>
         <p class="hint">자막이 따로 안 나오면 <code>--sub-langs ko</code>를 빼고 다시 받아 보세요. 자동 생성 자막이 없으면 직접 만든 자막을 올리면 됩니다.</p>
@@ -621,14 +904,14 @@
       </section>
 
       <section class="panel guide-card">
-        <header class="panel-head"><span class="panel-no">04</span><h2>개인정보</h2></header>
-        <p class="hint">영상·음성은 브라우저 메모리에서만 처리되고 서버로 전송되지 않습니다. 무료 AI 맛보기를 쓸 때는 <strong>자막에서 뽑은 텍스트 프롬프트만</strong> 전송됩니다.</p>
-        <p class="hint">Pro 키는 탭의 sessionStorage에만 저장되고, 연결한 제공자에게 브라우저에서 직접 요청합니다.</p>
+        <header class="panel-head"><span class="panel-no">05</span><h2>개인정보</h2></header>
+        <p class="hint">영상·음성은 브라우저 메모리에서만 처리되고 서버로 전송되지 않습니다. 무료 AI 맛보기나 Gemini 키를 쓸 때는 자막·본문에서 뽑은 텍스트 프롬프트만 전송됩니다. 블로그 사진은 읽기·이미지 프록시를 거쳐 표시만 됩니다.</p>
+        <p class="hint">Pro 키는 탭의 sessionStorage에만 저장되고, 연결한 제공자에게 브라우저에서 직접 요청합니다. Gemini·Fish 키도 기본은 sessionStorage이고, '이 브라우저에 기억'을 고른 경우에만 localStorage에 남습니다.</p>
         <p><a href="privacy.html">개인정보 처리방침 전문</a></p>
       </section>
 
       <section class="panel guide-card">
-        <header class="panel-head"><span class="panel-no">05</span><h2>라이선스</h2></header>
+        <header class="panel-head"><span class="panel-no">06</span><h2>라이선스</h2></header>
         <ul class="plain-list mono-small">
           <li>mediabunny 1.66.2 — MPL-2.0</li>
           <li>wavesurfer.js — BSD-3-Clause</li>
@@ -650,7 +933,7 @@
     </div>
     <div class="footer-links">
       <a href="privacy.html" id="footer-privacy">개인정보 처리방침</a>
-      <span class="mono-label">v1.1.0 · 29호기</span>
+      <span class="mono-label">v2.0.0 · 29호기</span>
     </div>
     <p class="footer-note">영상·음성 서버 전송 0건 · 가입 0 · 광고·분석 도구 없음</p>
   </div>
@@ -658,6 +941,51 @@
 
 <div class="toast-root" id="toast-root" aria-live="polite"></div>
 <div id="pro-modal-host"></div>
+
+<div class="modal-host" id="gemini-modal" hidden>
+  <div class="modal-back" data-close="1"></div>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="gemini-title">
+    <header class="modal-head">
+      <div>
+        <h2 id="gemini-title">내 무료 Gemini 키</h2>
+        <p class="hint">키는 이 브라우저에만 저장되고, 텍스트만 Google로 갑니다. 영상·사진은 전송하지 않습니다.</p>
+      </div>
+      <button type="button" class="icon-btn" id="btn-gemini-close" aria-label="닫기">×</button>
+    </header>
+    <div class="modal-body">
+      <label class="mini-field" for="inp-gemini-key">
+        <span>API 키</span>
+        <input type="password" id="inp-gemini-key" autocomplete="off" spellcheck="false" placeholder="AIza..." />
+      </label>
+      <p class="hint">키가 없으면 아래 링크에서 무료로 만들 수 있습니다: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">Google AI Studio</a></p>
+      <label class="switch-row compact" for="tg-gemini-remember">
+        <span class="switch-copy"><strong>이 브라우저에 기억</strong><small>끄면 탭을 닫을 때 사라집니다</small></span>
+        <input type="checkbox" id="tg-gemini-remember" class="switch" />
+        <span class="switch-ui" aria-hidden="true"></span>
+      </label>
+      <div class="field-row">
+        <label class="mini-field" for="sel-gemini-model">
+          <span>모델</span>
+          <select id="sel-gemini-model">
+            <option value="gemini-2.5-flash" selected>gemini-2.5-flash</option>
+            <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+            <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite</option>
+          </select>
+        </label>
+        <label class="mini-field" for="inp-gemini-proxy">
+          <span>프록시 (선택)</span>
+          <input type="url" id="inp-gemini-proxy" placeholder="비우면 Google 직접" spellcheck="false" />
+        </label>
+      </div>
+      <p class="modal-status" id="gemini-status">아직 저장된 키가 없습니다.</p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-primary" id="btn-gemini-save">저장</button>
+        <button type="button" class="btn btn-soft" id="btn-gemini-test">연결 확인</button>
+        <button type="button" class="btn btn-ghost" id="btn-gemini-clear">키 지우기</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <div class="busy" id="busy" hidden aria-live="assertive" aria-busy="true">
   <div class="busy-card">
@@ -670,9 +998,13 @@
 </div>
 
 <script src="core.js"></script>
+<script src="engines/gemini-core.js"></script>
 <script src="engines/free-ai.js"></script>
 <script src="engines/pro-api-connector.js"></script>
 <script src="engines/pro-studio.js"></script>
+<script src="engines/blog-source.js"></script>
+<script src="engines/tts.js"></script>
+<script src="engines/bgm.js"></script>
 <script src="assets/vendor/wavesurfer.min.js"></script>
 <script src="media.js"></script>
 <script src="demo.js"></script>
