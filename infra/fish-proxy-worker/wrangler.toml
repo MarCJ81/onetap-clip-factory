@@ -1,0 +1,11 @@
+# onetap-fish-proxy — Fish Audio TTS 용 무료 CORS 프록시 (Cloudflare Worker)
+# 배포: 이 폴더에서 `npx wrangler deploy` (무료 플랜, 카드 불필요)
+# 시크릿·환경변수 없음: 키는 브라우저가 보내는 Authorization 헤더만 통과시킨다.
+
+name = "onetap-fish-proxy"
+main = "worker.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+[observability]
+enabled = true
