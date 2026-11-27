@@ -1171,3 +1171,8 @@ input[type="range"]:disabled { opacity: 0.4; cursor: not-allowed; }
   .ref-thumb { width: 52px; }
   .ref-apply { grid-column: 2; justify-self: start; }
 }
+
+.yt-key-row { display: flex; align-items: flex-end; gap: 8px; }
+.yt-key-row .mini-field { flex: 1; }
+
+.yt-key-row[hidden] { display: none; }
