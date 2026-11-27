@@ -46,7 +46,8 @@
     { id: 'yellow', label: '옐로 임팩트', fill: '#FFE81A', stroke: '#0A0A0B', box: '', weight: 900, size: 0.062, pos: 'bottom', lineGap: 1.12 },
     { id: 'white', label: '클린 화이트', fill: '#FFFFFF', stroke: 'rgba(0,0,0,0.72)', box: '', weight: 800, size: 0.058, pos: 'center', lineGap: 1.16 },
     { id: 'box', label: '블랙 박스', fill: '#FFFFFF', stroke: '', box: 'rgba(8,9,11,0.78)', weight: 800, size: 0.060, pos: 'bottom', lineGap: 1.2 },
-    { id: 'kicker', label: '키커 라임', fill: '#0A0B0D', stroke: '', box: '#C8F441', weight: 900, size: 0.058, pos: 'bottom', lineGap: 1.2 }
+    { id: 'kicker', label: '키커 라임', fill: '#0A0B0D', stroke: '', box: '#C8F441', weight: 900, size: 0.058, pos: 'bottom', lineGap: 1.2 },
+    { id: 'karaoke', label: '카라오케 강조', fill: '#FFFFFF', stroke: '#07080B', box: '', weight: 900, size: 0.060, pos: 'bottom', lineGap: 1.14, accent: '#FFE81A', karaoke: true }
   ];
 
   /* 데모 VOD 계획 — 화면과 소리를 같은 대본에서 만든다.
@@ -1507,6 +1508,424 @@
     return out;
   }
 
+  /* ════════════════════════════════════════════════════════
+     V2 · 자동컷(영상) / 카드 쇼츠(블로그)
+     --------------------------------------------------------
+     순수 계산만 둔다. 네트워크·DOM은 engines 쪽이 맡는다.
+     ════════════════════════════════════════════════════════ */
+
+  /**
+   * 카라오케 자막: 지금 읽는 지점까지의 글자 수를 돌려준다.
+   * 시간 비례(글자 수 가중)로 계산한다 — 단어 타임코드가 없어도 자연스럽게
+   * 앞에서부터 채워지는 효과를 낸다.
+   */
+  function spokenChars(text, ratio) {
+    var s = String(text || '');
+    var r = clamp(ratio === undefined ? 0 : ratio, 0, 1);
+    if (!s.length) return 0;
+    if (r >= 0.995) return s.length;
+    var raw = Math.floor(s.length * r);
+    /* 단어 경계로 스냅 — 글자 중간에서 색이 바뀌지 않게 */
+    if (raw > 0 && raw < s.length && s.charAt(raw) !== ' ' && s.charAt(raw - 1) !== ' ') {
+      var back = s.lastIndexOf(' ', raw);
+      if (back > 0 && raw - back <= 6) return back + 1;
+    }
+    return raw;
+  }
+
+  /** 타임코드 사이 진행률(0~1) */
+  function progressAt(startMs, endMs, tMs) {
+    var span = Math.max(1, (endMs || 0) - (startMs || 0));
+    return clamp(((tMs || 0) - (startMs || 0)) / span, 0, 1);
+  }
+
+  /* ── 대본 → 자막 타임코드 (말소리 구간에 자동 배분) ─────── */
+  var SENTENCE_SPLIT = /(?<=[.!?。？！])\s+|\n+/;
+
+  /** 대본을 문장 단위로 나눈다. 너무 긴 줄은 쉼표에서 한 번 더 자른다. */
+  function splitScript(text) {
+    var raw = String(text || '').replace(/\r/g, '').trim();
+    if (!raw) return [];
+    var parts = raw.split(SENTENCE_SPLIT);
+    var out = [];
+    parts.forEach(function (p) {
+      var s = p.replace(/\s+/g, ' ').trim();
+      if (!s) return;
+      if (s.length > 62) {
+        var chunks = s.split(/(?<=[,，、])\s*/);
+        chunks.forEach(function (c) {
+          var t = c.trim();
+          if (t) out.push(t);
+        });
+      } else out.push(s);
+    });
+    return out.map(function (s) { return s.replace(/^[-•*>\s]+/, '').trim(); }).filter(Boolean);
+  }
+
+  /**
+   * 붙여넣은 대본 → 자막 큐.
+   * 말소리 구간(keep)을 알고 있으면 그 안에 글자 수 비례로 나눠 넣는다.
+   * 구간 목록이 없으면 0초부터 일정 속도로 배분한다.
+   *
+   * @param {string} text 대본
+   * @param {object} opts {segments:[{startMs,endMs}], durationMs, charsPerSec, minCueMs, maxCueMs}
+   */
+  function scriptToCues(text, opts) {
+    var o = opts || {};
+    var lines = splitScript(text);
+    if (!lines.length) return [];
+    var segments = (o.segments || []).filter(function (s) { return s && s.endMs > s.startMs; })
+      .map(function (s) { return { startMs: Math.max(0, s.startMs), endMs: s.endMs }; });
+    if (!segments.length) {
+      var dur = Math.max(1000, o.durationMs || (lines.length * 2600));
+      segments = [{ startMs: 0, endMs: dur }];
+    }
+    segments.sort(function (a, b) { return a.startMs - b.startMs; });
+    var speechTotal = segments.reduce(function (a, s) { return a + (s.endMs - s.startMs); }, 0);
+    var totalChars = lines.reduce(function (a, l) { return a + Math.max(1, l.length); }, 0);
+    var msPerChar = speechTotal / Math.max(1, totalChars);
+    var minCue = o.minCueMs === undefined ? 800 : o.minCueMs;
+    var maxCue = o.maxCueMs === undefined ? 7000 : o.maxCueMs;
+
+    /* 구간을 따라 앞으로 걸어가며 큐를 놓는다. 구간 사이(무음)는 건너뛴다.
+       한 문장이 무음 너머로 이어지면 같은 문장을 다시 띄우지 않고 그 구간 끝에서 끊는다. */
+    var segIndex = 0;
+    var cursor = segments[0].startMs;
+    var cues = [];
+    lines.forEach(function (line) {
+      var want = clamp(Math.round(Math.max(1, line.length) * msPerChar), minCue, maxCue);
+      while (segIndex < segments.length && cursor >= segments[segIndex].endMs - 120) {
+        segIndex++;
+        if (segIndex < segments.length) cursor = segments[segIndex].startMs;
+      }
+      if (segIndex >= segments.length) return;
+      var room = segments[segIndex].endMs - cursor;
+      var take = Math.min(room, want);
+      if (take < Math.min(400, want * 0.4)) {
+        /* 남은 자리가 너무 좁으면 다음 구간으로 넘긴다 */
+        segIndex++;
+        if (segIndex >= segments.length) return;
+        cursor = segments[segIndex].startMs;
+        take = Math.min(segments[segIndex].endMs - cursor, want);
+      }
+      var startMs = Math.round(cursor);
+      var endMs = Math.round(cursor + take);
+      var prev = cues[cues.length - 1];
+      if (prev && startMs - prev.startMs < 1) {
+        prev.endMs = endMs;
+        prev.text = (prev.text + ' ' + line).slice(0, 90);
+      } else {
+        cues.push({ startMs: startMs, endMs: endMs, text: line });
+      }
+      cursor = endMs;
+    });
+    /* 너무 짧은 꼬리 큐는 앞 큐에 붙인다 */
+    var merged = [];
+    cues.forEach(function (c) {
+      var last = merged[merged.length - 1];
+      if (last && (c.endMs - c.startMs) < minCue * 0.55 && c.startMs - last.endMs < 400) {
+        last.endMs = c.endMs;
+        last.text = (last.text + ' ' + c.text).slice(0, 90);
+        return;
+      }
+      merged.push(c);
+    });
+    return merged;
+  }
+
+  /** 말소리를 못 읽었을 때(소리 없는 영상) 대본을 화면 길이에 맞춰 배분 */
+  function scriptToCuesByDuration(text, durationMs) {
+    return scriptToCues(text, { durationMs: durationMs, segments: [{ startMs: 0, endMs: durationMs }] });
+  }
+
+  /* ── 로컬 훅(제목·첫 문장) — AI 없이도 카드가 비지 않게 ─ */
+  function localHook(texts, opts) {
+    var o = opts || {};
+    var list = (texts || []).map(function (t) { return String(t || '').replace(/\s+/g, ' ').trim(); }).filter(Boolean);
+    var joined = list.join(' ');
+    var phrases = keyPhrases(list, 4);
+    var title = '';
+    var first = list[0] || joined;
+    var q = list.filter(function (t) { return /[?？]$/.test(t); })[0];
+    if (first && first.length <= 38) title = first.replace(/[.。]+$/, '');
+    if (!title && q) title = shortenText(q, 34);
+    if (!title && phrases.length) title = shortenText(phrases.slice(0, 2).join(' '), 34);
+    if (!title) title = shortenText(first, 34);
+    var hook = shortenText((q || first).replace(/[.。]+$/, ''), 60);
+    if (hook && hook.charAt(hook.length - 1) !== '?' && /^(왜|어떻게|뭐가|무엇|진짜|정말)/.test(hook)) hook += '?';
+    var tags = normalizeTags(phrases.map(function (p) { return p.replace(/\s+/g, ''); })).slice(0, 3);
+    return { title: title, hook: hook, hashtags: tags, source: 'local', note: o.note || '' };
+  }
+
+  /* ── 블로그 → 5장면 카드 쇼츠 ─────────────────────────── */
+
+  var FILM_THEMES = [
+    {
+      id: 'editorial', label: '에디토리얼 다크',
+      bg: '#0A0C10', bg2: '#1A2233', ink: '#F5F7FA', sub: '#A9B4C6',
+      accent: '#C8F441', accentInk: '#0B0D10', card: 'rgba(10,12,16,0.62)'
+    },
+    {
+      id: 'lime', label: '라임 팝',
+      bg: '#C8F441', bg2: '#9BD61C', ink: '#0B0D10', sub: '#243009',
+      accent: '#0B0D10', accentInk: '#C8F441', card: 'rgba(200,244,65,0.72)'
+    },
+    {
+      id: 'paper', label: '웜 페이퍼',
+      bg: '#F4EEE3', bg2: '#E4D7C3', ink: '#1B1712', sub: '#6A5B48',
+      accent: '#C2410C', accentInk: '#FFF7ED', card: 'rgba(244,238,227,0.76)'
+    }
+  ];
+
+  /* 데모 글 — 네트워크 없이 블로그 흐름을 끝까지 시험하기 위한 자체 원고 */
+  var DEMO_ARTICLE = {
+    title: '중고 노트북 살 때 꼭 확인할 5가지',
+    source: 'demo',
+    paragraphs: [
+      '중고 노트북은 가격만 보고 고르면 배터리와 키보드에서 발목을 잡힙니다. 판매 글의 사진과 설명만으로는 알 수 없는 부분이 생각보다 많습니다.',
+      '첫째, 배터리 사이클 수와 설계 용량을 확인하세요. 제조사 진단 프로그램에서 사이클 300회 이하, 설계 용량의 80% 이상이면 아직 쓸 만합니다.',
+      '둘째, 키보드와 트랙패드를 직접 눌러 보세요. 중고 거래에서는 한두 개 키가 죽어 있어도 사진으로는 드러나지 않습니다.',
+      '셋째, 화면을 단색 배경으로 바꿔 불량 화소와 얼룩을 봅니다. 흰색과 회색 배경을 각각 띄우고 측면에서 액정을 비스듬히 보세요.',
+      '넷째, 발열과 팬 소리입니다. 5분 정도 부하를 걸어 팬이 덜컹거리거나 측면이 비정상적으로 뜨거워지면 내부 먼지나 서멀 문제를 의심해야 합니다.',
+      '다섯째, 포트와 충전기를 모두 테스트하세요. USB 단자 하나가 죽어 있으면 독이나 허브로 비용이 더 듭니다. 마지막으로 판매자에게 원래 구매 영수증과 보증 기간을 꼭 물어보세요.'
+    ],
+    images: []
+  };
+
+  /** 제목·본문 정리: 공백·중복 줄·머리표 제거 */
+  function cleanArticleText(text) {
+    var lines = String(text || '').replace(/\r/g, '').split('\n');
+    var out = [];
+    var seen = {};
+    lines.forEach(function (line) {
+      var s = line.replace(/\s+/g, ' ').trim();
+      s = s.replace(/^[#>*\-•\d.\s]{0,8}/, function (m) { return /^[#>]/.test(m) ? '' : m; }).trim();
+      if (!s) return;
+      if (s.length < 12) return;
+      if (/^(구독|좋아요|공감|댓글|이웃|블로그|카테고리|전체보기|TOP)/i.test(s)) return;
+      if (seen[s]) return;
+      seen[s] = 1;
+      out.push(s);
+    });
+    return out;
+  }
+
+  /** 본문 문단 → 장면 수에 맞춰 묶기 */
+  function groupParagraphs(paragraphs, count) {
+    var list = (paragraphs || []).filter(Boolean);
+    var n = Math.max(1, count || 5);
+    if (!list.length) return [];
+    if (list.length <= n) return list.slice();
+    var groups = [];
+    var per = list.length / n;
+    for (var i = 0; i < n; i++) {
+      var a = Math.floor(i * per);
+      var b = Math.max(a + 1, Math.floor((i + 1) * per));
+      groups.push(list.slice(a, b).join(' '));
+    }
+    return groups;
+  }
+
+  /** 장면 문구 다듬기: 너무 길면 자르고, 끝의 마침표는 뗀다 */
+  function sceneLine(text, limit) {
+    var s = String(text || '').replace(/\s+/g, ' ').trim();
+    s = s.replace(/^(첫째|둘째|셋째|넷째|다섯째|여섯째|마지막으로|우선|먼저)[,.]?\s*/, '');
+    s = s.replace(/[.。]+$/, '');
+    if (limit && s.length > limit) {
+      var cut = s.slice(0, limit - 1);
+      var comma = Math.max(cut.lastIndexOf(','), cut.lastIndexOf('·'), cut.lastIndexOf('—'));
+      if (comma >= Math.floor(limit * 0.45)) cut = cut.slice(0, comma);
+      else cut = cut.replace(/\s+\S*$/, '');
+      s = cut.trim() + '…';
+    }
+    return s;
+  }
+
+  /** 블로그 글 → 5장면 초안(로컬 규칙). AI가 없어도 항상 같은 모양으로 답한다. */
+  function localFilmScript(article, opts) {
+    var o = opts || {};
+    var count = clamp(o.count || 5, 3, 6);
+    var title = String((article && article.title) || '').trim() || '블로그 글';
+    var paras = (article && article.paragraphs) || [];
+    var groups = groupParagraphs(paras, count);
+    var first = groups[0] || title;
+    var hookText = sceneLine(first, 46);
+    var scenes = [];
+    for (var i = 0; i < count; i++) {
+      var body = groups[i] || '';
+      var sentences = splitScript(body);
+      var head = sentences[0] || title;
+      var rest = sentences.slice(1).join(' ');
+      var q = paragraphsKeyPhrase(body) || keyPhrases([body], 1)[0] || title;
+      scenes.push({
+        kicker: ('0' + (i + 1)).slice(-2),
+        headline: i === 0 ? sceneLine(hookText, 34) : sceneLine(head, 34),
+        sub: i === 0 ? '' : sceneLine(rest, 64),
+        caption: sceneLine(i === 0 ? first : head, 46),
+        imageQuery: q
+      });
+    }
+    return {
+      title: title,
+      hook: hookText,
+      scenes: scenes,
+      hashtags: normalizeTags(keyPhrases(paras, 4).map(function (p) { return p.replace(/\s+/g, ''); })).slice(0, 3),
+      source: 'local'
+    };
+  }
+
+  /** 문단에서 대표 낱말 하나 (사진 검색어용) */
+  function paragraphsKeyPhrase(text) {
+    var phrases = keyPhrases([text], 4);
+    var VERB_END = /(다|요|며|고|서|면|나|로|게|지|함|됨|경우|때문)$/;
+    for (var i = 0; i < phrases.length; i++) {
+      var p = phrases[i].replace(/\s+/g, '');
+      if (p.length >= 2 && p.length <= 8 && !VERB_END.test(p)) return p;
+    }
+    var tokens = String(text || '').replace(/[^\uac00-\ud7a3\s]/g, ' ').split(/\s+/)
+      .filter(function (t) { return t.length >= 2 && t.length <= 5 && !VERB_END.test(t); });
+    return tokens[0] || phrases[0] || '';
+  }
+
+  function buildFilmPrompt(meta) {
+    var m = meta || {};
+    var count = clamp(m.count || 5, 3, 6);
+    var body = String(m.body || '').slice(0, 2600);
+    var system = '너는 한국어 숏폼 대본 작가다. 주어진 글에 없는 사실을 만들지 않는다. ' +
+      '문장은 짧고 구어체로 쓰고, AI 말투(음.., ~임, ~라는 점에서)를 쓰지 않는다.';
+    var prompt = [
+      '아래 블로그 글을 ' + count + '장면짜리 9:16 카드 쇼츠 대본으로 바꿔라.',
+      '규칙:',
+      '- 첫 장면은 훅(궁금증·숫자·반전). 마지막 장면은 한 줄 정리나 행동 제안.',
+      '- headline은 화면에 크게 올릴 22자 이내 한 문장.',
+      '- sub는 headline을 받쳐 줄 40자 이내 한 문장(없으면 빈 문자열).',
+      '- caption은 화면 아래 자막 1~2줄, 32자 이내. 말하듯 쓴다.',
+      '- imageQuery는 장면에 어울리는 사진 검색어 2~4단어(한국어).',
+      '- 글에 없는 숫자·효과·후기를 지어내지 않는다.',
+      'JSON만 출력: {"title":"...","hook":"...","scenes":[{"headline":"...","sub":"...","caption":"...","imageQuery":"..."}],"hashtags":["..."]}',
+      '',
+      '제목: ' + String(m.title || '').slice(0, 120),
+      '본문:',
+      body
+    ].join('\n');
+    return { system: system, prompt: prompt };
+  }
+
+  /** AI 응답 → 장면 목록. 형식이 조금 어긋나도 읽어 낸다. */
+  function parseFilmJSON(text, opts) {
+    var o = opts || {};
+    var raw = stripFence(String(text || ''));
+    var obj = null;
+    try { obj = JSON.parse(raw); } catch (e) { obj = null; }
+    if (!obj) {
+      var m = raw.match(/\{[\s\S]*\}/);
+      if (m) { try { obj = JSON.parse(m[0]); } catch (e2) { obj = null; } }
+    }
+    if (!obj) {
+      var salv = salvageJsonObjects(raw);
+      if (salv.length) obj = salv[0];
+    }
+    if (!obj || typeof obj !== 'object') return { ok: false, scenes: [], reason: 'unreadable' };
+    var list = obj.scenes || obj.shots || obj.frames || obj.장면 || obj.cards;
+    if (!Array.isArray(list)) {
+      /* 장면 배열이 없으면 본문 문단으로 대신한다 */
+      return { ok: false, scenes: [], reason: 'no_scenes' };
+    }
+    var max = clamp(o.count || 5, 3, 6);
+    var scenes = [];
+    list.slice(0, max).forEach(function (s, i) {
+      if (!s || typeof s !== 'object') return;
+      var headline = pickKey(s, ['headline', 'title', 'heading', 'text', '제목', '문장']) || '';
+      var sub = pickKey(s, ['sub', 'subtitle', 'desc', 'description', 'body', '부제']) || '';
+      var caption = pickKey(s, ['caption', 'subtitle_text', 'script', 'narration', '자막', '대사']) || headline;
+      var imageQuery = pickKey(s, ['imageQuery', 'image', 'keyword', 'query', '검색어']) || '';
+      scenes.push({
+        kicker: ('0' + (i + 1)).slice(-2),
+        headline: sceneLine(headline, 62),
+        sub: sceneLine(sub, 78),
+        caption: sceneLine(caption, 46),
+        imageQuery: sceneLine(imageQuery, 24)
+      });
+    });
+    scenes = scenes.filter(function (s) { return s.headline || s.caption; });
+    if (scenes.length < 3) return { ok: false, scenes: scenes, reason: 'too_few' };
+    return {
+      ok: true,
+      title: String(obj.title || o.title || '').slice(0, 120),
+      hook: String(obj.hook || '').slice(0, 140),
+      scenes: scenes,
+      hashtags: normalizeTags(obj.hashtags || obj.tags || []).slice(0, 5)
+    };
+  }
+
+  /** 장면 길이: 내레이션이 있으면 그 길이 + 여백, 없으면 글자 수로 추정 */
+  function filmSceneMs(scene, narrationMs) {
+    if (narrationMs && narrationMs > 300) return clamp(Math.round(narrationMs + 520), 2200, 12000);
+    var text = String((scene && (scene.caption || scene.headline)) || '');
+    return clamp(Math.round(2400 + text.length * 95), 2400, 7800);
+  }
+
+  /** 장면 목록 → 타임라인(ms) */
+  function filmTimeline(scenes, opts) {
+    var o = opts || {};
+    var narr = o.narrationMs || [];
+    var acc = 0;
+    return (scenes || []).map(function (s, i) {
+      var dur = filmSceneMs(s, narr[i]);
+      var item = { index: i, startMs: acc, endMs: acc + dur, durMs: dur };
+      acc += dur;
+      return item;
+    });
+  }
+
+  /** 현재 시각의 장면과 그 안 진행률 */
+  function filmAt(timeline, tMs) {
+    var list = timeline || [];
+    if (!list.length) return null;
+    var t = Math.max(0, tMs || 0);
+    for (var i = 0; i < list.length; i++) {
+      if (t < list[i].endMs) {
+        return {
+          index: i, scene: list[i],
+          localMs: t - list[i].startMs,
+          progress: clamp((t - list[i].startMs) / Math.max(1, list[i].durMs), 0, 1),
+          total: list.length
+        };
+      }
+    }
+    var last = list[list.length - 1];
+    return { index: list.length - 1, scene: last, localMs: last.durMs, progress: 1, total: list.length };
+  }
+
+  /** 캔번즈(줌·팬) 값 — 장면마다 방향을 바꿔 단조로움을 피한다 */
+  function kenBurns(progress, index, strength) {
+    var p = clamp(progress || 0, 0, 1);
+    var s = strength === undefined ? 0.10 : strength;
+    var dir = index % 4;
+    var zoom = 1.04 + s * p;
+    var px = 0, py = 0;
+    if (dir === 0) { px = -0.5 * s * p; py = -0.2 * s * p; }
+    else if (dir === 1) { px = 0.5 * s * p; py = 0.2 * s * p; }
+    else if (dir === 2) { px = 0.35 * s * p; py = -0.35 * s * p; }
+    else { px = -0.35 * s * p; py = 0.3 * s * p; }
+    return { zoom: zoom, dx: px, dy: py };
+  }
+
+  /** 이미지 cover 배치(9:16 안을 꽉 채움) */
+  function coverRect(iw, ih, w, h, zoom, dx, dy) {
+    var z = zoom || 1;
+    var scale = Math.max(w / Math.max(1, iw), h / Math.max(1, ih)) * z;
+    var dw = iw * scale, dh = ih * scale;
+    var x = (w - dw) / 2 + (dx || 0) * w;
+    var y = (h - dh) / 2 + (dy || 0) * h;
+    return { x: x, y: y, w: dw, h: dh };
+  }
+
+  /** 블로그 글 → 카드 쇼츠 파일 이름 */
+  function filmFileName(title, ext) {
+    return 'shorts-' + safeName(title, 'blog') + '.' + (ext || 'mp4');
+  }
+
   /* ── 파일·검증 ─────────────────────────────────────────── */
   function safeName(text, fallback) {
     var base = String(text || '').trim().replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, '-').slice(0, 48);
@@ -1641,6 +2060,28 @@
     normalizeCommentary: normalizeCommentary,
     salvageJsonObjects: salvageJsonObjects,
     captionBands: captionBands,
+
+    /* V2 */
+    spokenChars: spokenChars,
+    progressAt: progressAt,
+    splitScript: splitScript,
+    scriptToCues: scriptToCues,
+    scriptToCuesByDuration: scriptToCuesByDuration,
+    localHook: localHook,
+    FILM_THEMES: FILM_THEMES,
+    DEMO_ARTICLE: DEMO_ARTICLE,
+    cleanArticleText: cleanArticleText,
+    groupParagraphs: groupParagraphs,
+    sceneLine: sceneLine,
+    localFilmScript: localFilmScript,
+    buildFilmPrompt: buildFilmPrompt,
+    parseFilmJSON: parseFilmJSON,
+    filmSceneMs: filmSceneMs,
+    filmTimeline: filmTimeline,
+    filmAt: filmAt,
+    kenBurns: kenBurns,
+    coverRect: coverRect,
+    filmFileName: filmFileName,
 
     safeName: safeName,
     clipFileName: clipFileName,
