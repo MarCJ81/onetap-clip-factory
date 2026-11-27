@@ -4,8 +4,9 @@
    1) silent  — 0원. 소리는 없지만 자막 타이밍을 글자 수로 계산해 영상은 완성된다.
    2) browser — Web Speech API. 미리 듣기만 된다(<audio>로 녹음 불가 → 렌더 불가).
    3) fish    — Fish Audio API 키를 넣으면 s2.1-pro-free / s2.1-pro 성우 더빙.
-                브라우저 직접 호출은 CORS로 막힌다. 그래서 '프록시 주소'(내 Worker)
-                칸을 두고, 실패하면 조용히 silent로 내려간다.
+                브라우저 직접 호출은 CORS로 막힌다. 그래서 무료 공용 프록시
+                (DEFAULT_PROXY, Cloudflare Worker)를 기본으로 쓰고, 주소 칸에서
+                다른 프록시로 바꿀 수 있다. 실패하면 조용히 silent로 내려간다.
 
    키는 sessionStorage(선택 시 localStorage)에만 있고 이 브라우저를 떠나지 않는다.
    ========================================================================== */
@@ -16,13 +17,16 @@
   'use strict';
 
   var FISH_ENDPOINT = 'https://api.fish.audio/v1/tts';
+  // 무료 공용 프록시 (infra/fish-proxy-worker). 키를 저장하지 않고 Authorization 만 통과시킨다.
+  var DEFAULT_PROXY = 'https://onetap-fish-proxy.onetap-ai.workers.dev';
   var KEY_SESSION = 'clip-factory.fish.key';
   var KEY_REMEMBER = 'clip-factory.fish.remember';
   var VOICE_PREF = 'clip-factory.fish.voice';
   var MODEL_PREF = 'clip-factory.fish.model';
   var PROXY_PREF = 'clip-factory.fish.proxy';
 
-  var state = { key: '', remember: false, voice: '', model: 's2.1-pro-free', proxy: '' };
+  var state = { key: '', remember: false, voice: '', model: 's2.1-pro-free', proxy: DEFAULT_PROXY };
+  var LOCAL_NONE = 'none'; // 프록시를 비우겠다는 표시(저장값 ''와 '아직 설정 안 함'을 구분)
   var loaded = false;
 
   function trim(v) { return String(v === null || v === undefined ? '' : v).replace(/^\s+|\s+$/g, ''); }
@@ -38,7 +42,7 @@
         if (rk) { state.key = rk; state.remember = true; }
         var v = l.getItem(VOICE_PREF); if (v) state.voice = v;
         var m = l.getItem(MODEL_PREF); if (m) state.model = m;
-        var p = l.getItem(PROXY_PREF); if (p) state.proxy = p;
+        var p = l.getItem(PROXY_PREF); if (p !== null) state.proxy = p === LOCAL_NONE ? '' : p;
       }
       if (!state.key && s) {
         var sk = s.getItem(KEY_SESSION);
@@ -66,7 +70,7 @@
         else root.localStorage.removeItem(KEY_REMEMBER);
         if (state.voice) root.localStorage.setItem(VOICE_PREF, state.voice);
         if (state.model) root.localStorage.setItem(MODEL_PREF, state.model);
-        if (state.proxy) root.localStorage.setItem(PROXY_PREF, state.proxy);
+        root.localStorage.setItem(PROXY_PREF, state.proxy || LOCAL_NONE);
       }
     } catch (e) { /* noop */ }
     return status();
@@ -89,7 +93,8 @@
       masked: state.key ? (state.key.slice(0, 3) + '••••' + state.key.slice(-3)) : '',
       voice: state.voice,
       model: state.model,
-      proxy: state.proxy
+      proxy: state.proxy,
+      proxyDefault: DEFAULT_PROXY
     };
   }
 
@@ -178,7 +183,8 @@
     var s = trim(text);
     if (!s) return Promise.resolve({ ok: false, reason: 'empty' });
     if (!key) return Promise.resolve({ ok: false, reason: 'no_key', message: 'Fish Audio 키가 없습니다.' });
-    var endpoint = trim(o.proxy || state.proxy) || FISH_ENDPOINT;
+    var proxy = trim(o.proxy === undefined ? state.proxy : o.proxy);
+    var endpoint = proxy || FISH_ENDPOINT;
     var body = {
       text: s.slice(0, 1800),
       format: o.format || 'mp3',
@@ -193,7 +199,7 @@
       Authorization: 'Bearer ' + key,
       model: trim(o.model || state.model) || 's2.1-pro-free'
     };
-    if (trim(o.proxy || state.proxy)) headers['x-fish-target'] = FISH_ENDPOINT;
+    if (proxy) headers['x-fish-target'] = FISH_ENDPOINT;
     var controller = typeof root.AbortController === 'function' ? new root.AbortController() : null;
     var timer = null;
     var init = { method: 'POST', headers: headers, body: JSON.stringify(body), credentials: 'omit', mode: 'cors', cache: 'no-store' };
@@ -224,8 +230,9 @@
       return {
         ok: false,
         reason: aborted ? 'timeout' : 'cors',
-        message: aborted ? '응답 시간이 초과됐습니다.' :
-          '브라우저에서 Fish Audio로 직접 연결이 막혔습니다(CORS). 프록시 주소를 넣어 주세요.'
+        message: aborted ? '응답 시간이 초과됐습니다.' : proxy ?
+          L('프록시(' + proxy + ')에 연결하지 못했습니다. 주소와 네트워크를 확인해 주세요.', 'Could not reach the proxy (' + proxy + '). Check the address and network.') :
+          '브라우저에서 Fish Audio로 직접 연결이 막혔습니다(CORS). 프록시 주소를 비우지 말고 기본 프록시를 쓰세요.'
       };
     }).then(function (res) {
       if (timer) clearTimeout(timer);
@@ -276,8 +283,21 @@
     }
   }
 
+  function L(ko, en) {
+    try {
+      var i18n = root.OneTapI18n;
+      if (i18n && typeof i18n.lang === 'string') return i18n.lang === 'en' ? en : ko;
+      var q = String((root.location && root.location.search) || '');
+      if (/[?&]lang=en\b/.test(q)) return en;
+      var h = root.document && root.document.documentElement;
+      if (h && h.getAttribute('lang') === 'en') return en;
+    } catch (e) { /* noop */ }
+    return ko;
+  }
+
   return {
     FISH_ENDPOINT: FISH_ENDPOINT,
+    DEFAULT_PROXY: DEFAULT_PROXY,
     status: status,
     save: save,
     clear: clear,

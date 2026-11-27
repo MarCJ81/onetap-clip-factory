@@ -732,10 +732,10 @@
                 </label>
               </div>
               <label class="mini-field" for="inp-fish-proxy">
-                <span>프록시 주소 (선택)</span>
-                <input type="url" id="inp-fish-proxy" placeholder="https://내-worker.workers.dev" spellcheck="false" />
+                <span>프록시 주소 (기본: 무료 프록시)</span>
+                <input type="url" id="inp-fish-proxy" placeholder="https://onetap-fish-proxy.onetap-ai.workers.dev" spellcheck="false" />
               </label>
-              <p class="hint" id="fish-note">브라우저에서 api.fish.audio로 직접 붙으면 CORS로 막힙니다. 내 프록시를 넣거나 무음 모드로 두세요.</p>
+              <p class="hint" id="fish-note">무료 프록시가 기본으로 연결돼 있어 Fish 키만 넣으면 됩니다. 다른 프록시로 바꿀 수 있고, 칸을 비우면 Fish Audio로 직접 붙습니다(대부분 CORS로 막힘).</p>
               <button type="button" class="btn btn-soft btn-sm" id="btn-tts-test">첫 장면 목소리 미리 듣기</button>
             </div>
             <label class="mini-field" for="sel-bgm">
@@ -877,7 +877,7 @@
         <ol class="steps">
           <li><strong>영상 자동컷</strong><span>영상을 넣고 “원버튼으로 쇼츠 만들기”를 누르면 ① 소리·장면 분석 ② 설정한 길이(기본 0.6초) 이상 무음 컷 ③ 9:16 크롭(피사체·중앙·블러 배경) ④ 대본을 말소리 구간에 배분한 카라오케 자막 ⑤ 제목·훅 ⑥ MP4 렌더까지 자동으로 갑니다. 중간 결과는 카드에서 직접 고칠 수 있습니다.</span></li>
           <li><strong>블로그 → 쇼츠</strong><span>URL을 넣으면 읽기 프록시가 제목·본문·사진을 가져오고, AI(또는 규칙)가 5장면 대본을 씁니다. 장면마다 화면 제목·자막·사진을 붙이고, 캔번즈 줌·팬과 BGM 덕킹을 넣어 9:16 MP4로 뽑습니다.</span></li>
-          <li><strong>더빙 3단</strong><span>무음(자막 타이밍, 0원) · 브라우저 음성(미리 듣기만) · Fish Audio 성우(s2.1-pro-free / s2.1-pro, 내 키). 브라우저 직접 호출이 CORS로 막히면 프록시 주소를 넣습니다.</span></li>
+          <li><strong>더빙 3단</strong><span>무음(자막 타이밍, 0원) · 브라우저 음성(미리 듣기만) · Fish Audio 성우(s2.1-pro-free / s2.1-pro, 내 키). CORS는 무료 프록시가 기본으로 막아 주고, 주소 칸에서 다른 프록시로 바꿀 수 있습니다.</span></li>
           <li><strong>GeminiCore</strong><span>내 무료 Gemini 키를 x-goog-api-key 헤더로 부르고, 모델이 없거나 429·503이면 다음 모델로 넘어갑니다. 키가 없으면 무료 맛보기 → 규칙 순서로 내려가므로 버튼이 먹통이 되지 않습니다.</span></li>
         </ol>
       </section>
@@ -888,7 +888,7 @@
           <li>얼굴 인식 모델은 넣지 않았습니다. 피부톤·움직임 추적은 가볍고 빠르지만, 얼굴이 작거나 피부색이 배경과 비슷하면 중앙 쪽으로 돌아갑니다.</li>
           <li>음성 인식(자동 자막)은 없습니다. 쓰던 SRT/VTT를 올리거나, 대본을 붙여넣어 말소리 구간에 배분하세요. 배분은 글자 수 비례라 실제 발음과 몇백 ms 어긋날 수 있습니다.</li>
           <li>블로그 읽기는 공개 읽기 프록시에 기대므로, 막는 블로그는 붙여넣기로 넘어갑니다. 사진은 캔버스 오염을 막기 위해 이미지 프록시를 거칩니다.</li>
-          <li>Fish Audio는 브라우저에서 직접 부르면 CORS로 막힙니다. 프록시(내 Worker)가 필요하고, 실패하면 무음 모드로 내려갑니다.</li>
+          <li>Fish Audio는 브라우저에서 직접 부르면 CORS로 막히므로 무료 프록시를 거칩니다. 프록시는 키를 저장하지 않고 그대로 통과시키며, 프록시나 키 문제로 실패하면 무음 모드로 내려갑니다.</li>
           <li>장면 컷은 히스토그램 표본 기반이라, 화면이 서서히 밝아지는 구간은 놓칠 수 있습니다.</li>
           <li>유튜브 링크는 브라우저에서 직접 받을 수 없습니다. yt-dlp로 받은 파일을 끌어다 놓으세요.</li>
           <li>긴 영상은 프레임 표본을 최대 260개로 제한합니다(파형은 전체를 계산).</li>
