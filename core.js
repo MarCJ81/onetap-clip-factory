@@ -1741,6 +1741,16 @@
     return s;
   }
 
+  /** 날짜·숫자만 많은 줄은 장면 제목으로 약하다 */
+  function isWeakLine(text) {
+    var s = String(text || '').trim();
+    if (!s) return true;
+    if (/^\d{4}\s*[.\-\/년]/.test(s)) return true;
+    var digits = (s.match(/[0-9]/g) || []).length;
+    if (digits / s.length > 0.28) return true;
+    return false;
+  }
+
   /** 블로그 글 → 5장면 초안(로컬 규칙). AI가 없어도 항상 같은 모양으로 답한다. */
   function localFilmScript(article, opts) {
     var o = opts || {};
@@ -1749,13 +1759,22 @@
     var paras = (article && article.paragraphs) || [];
     var groups = groupParagraphs(paras, count);
     var first = groups[0] || title;
+    if (groups.length) {
+      /* 첫 장면 훅은 날짜·숫자 위주 줄을 피해 고른다 */
+      for (var gi = 0; gi < groups.length; gi++) {
+        if (!isWeakLine(groups[gi])) { first = groups[gi]; break; }
+      }
+    }
     var hookText = sceneLine(first, 46);
     var scenes = [];
     for (var i = 0; i < count; i++) {
       var body = groups[i] || '';
       var sentences = splitScript(body);
       var head = sentences[0] || title;
-      var rest = sentences.slice(1).join(' ');
+      for (var si = 0; si < sentences.length; si++) {
+        if (!isWeakLine(sentences[si])) { head = sentences[si]; rest = sentences.filter(function (x) { return x !== head; }).join(' '); break; }
+      }
+      var rest = rest || sentences.slice(1).join(' ');
       var q = paragraphsKeyPhrase(body) || keyPhrases([body], 1)[0] || title;
       scenes.push({
         kicker: ('0' + (i + 1)).slice(-2),
