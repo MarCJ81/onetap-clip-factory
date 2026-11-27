@@ -2990,13 +2990,13 @@
     if (!q) { toast(L('키워드를 넣어 주세요.', 'Type a keyword first.'), 'warn'); return; }
     var key = $('#inp-yt-key') && $('#inp-yt-key').value.trim() ? $('#inp-yt-key').value.trim() : ytKey();
     if (!key) {
-      if ($('#yt-key-field')) $('#yt-key-field').hidden = false;
       if ($('#inp-yt-key')) $('#inp-yt-key').focus();
       setRefNote(L('YouTube Data API 키가 필요합니다. 무료로 발급받아 아래 칸에 넣으면 이 브라우저에만 저장됩니다.', 'A free YouTube Data API key is needed. It stays in this browser only.'), 'warn');
       return;
     }
     saveYtKey(key);
-    if ($('#yt-key-field')) $('#yt-key-field').hidden = true;
+    if ($('#inp-yt-key')) $('#inp-yt-key').value = '';
+    if ($('#inp-yt-key')) $('#inp-yt-key').placeholder = L('저장됨 · 바꾸려면 새 키 입력', 'Saved · type a new key to replace');
     setRefNote(L('“' + q + '” 인기 쇼츠를 찾는 중…', 'Searching popular shorts for “' + q + '”…'));
     ytApi('search', {
       part: 'snippet', type: 'video', videoDuration: 'short', order: 'viewCount',
@@ -3099,13 +3099,18 @@
     on($('#ref-query'), 'keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); searchYouTubeRefs(); } });
     on($('#inp-yt-key'), 'change', function () {
       saveYtKey($('#inp-yt-key').value.trim());
-      if ($('#inp-yt-key').value.trim()) { $('#yt-key-field').hidden = true; setRefNote(L('키를 저장했습니다. 이제 수집을 누르세요.', 'Key saved. Press collect.')); }
+      if ($('#inp-yt-key').value.trim()) {
+        $('#inp-yt-key').value = '';
+        $('#inp-yt-key').placeholder = L('저장됨 · 바꾸려면 새 키 입력', 'Saved · type a new key to replace');
+        setRefNote(L('키를 저장했습니다. 이제 수집을 누르세요.', 'Key saved. Press collect.'));
+      }
     });
     on($('#btn-yt-key-clear'), 'click', function () {
       saveYtKey('');
-      if ($('#inp-yt-key')) $('#inp-yt-key').value = '';
+      if ($('#inp-yt-key')) { $('#inp-yt-key').value = ''; $('#inp-yt-key').placeholder = 'AIza...'; }
       setRefNote(L('저장된 YouTube 키를 지웠습니다. 이 브라우저에 남아 있지 않습니다.', 'Cleared the saved YouTube key from this browser.'));
     });
+    if ($('#inp-yt-key') && ytKey()) $('#inp-yt-key').placeholder = L('저장됨 · 바꾸려면 새 키 입력', 'Saved · type a new key to replace');
     renderRefs();
   }
 
