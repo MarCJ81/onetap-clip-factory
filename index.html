@@ -889,10 +889,13 @@
               <input type="search" id="ref-query" placeholder="예: 중고 노트북, 자취 요리" spellcheck="false" />
               <button type="button" class="btn btn-soft btn-sm" id="btn-ref-search">수집</button>
             </div>
-            <label class="mini-field" for="inp-yt-key" hidden id="yt-key-field">
-              <span>YouTube Data API 키 (무료)</span>
-              <input type="password" id="inp-yt-key" autocomplete="off" placeholder="AIza..." />
-            </label>
+            <div class="yt-key-row" hidden id="yt-key-field">
+              <label class="mini-field" for="inp-yt-key">
+                <span>YouTube Data API 키 (무료)</span>
+                <input type="password" id="inp-yt-key" autocomplete="off" placeholder="AIza..." />
+              </label>
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-yt-key-clear">키 지우기</button>
+            </div>
             <p class="hint" id="ref-note">키가 없으면 키 입력칸이 열립니다. 영상 길이·조회수·훅 문장을 목록에서 고르면 프리셋이 적용됩니다.</p>
             <div class="ref-list" id="ref-list"></div>
           </div>

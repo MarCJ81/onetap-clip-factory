@@ -3101,6 +3101,11 @@
       saveYtKey($('#inp-yt-key').value.trim());
       if ($('#inp-yt-key').value.trim()) { $('#yt-key-field').hidden = true; setRefNote(L('키를 저장했습니다. 이제 수집을 누르세요.', 'Key saved. Press collect.')); }
     });
+    on($('#btn-yt-key-clear'), 'click', function () {
+      saveYtKey('');
+      if ($('#inp-yt-key')) $('#inp-yt-key').value = '';
+      setRefNote(L('저장된 YouTube 키를 지웠습니다. 이 브라우저에 남아 있지 않습니다.', 'Cleared the saved YouTube key from this browser.'));
+    });
     renderRefs();
   }
 
