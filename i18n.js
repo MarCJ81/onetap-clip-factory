@@ -2151,6 +2151,7 @@ window.__ONETAP_I18N_DICT__ = {
 window.__ONETAP_I18N_RULES__ = [["유튜브", "YouTube"], ["틱톡", "TikTok"], ["인스타그램", "Instagram"], ["인스타", "Instagram"], ["(\\d+)\\s*시간 전", "$1h ago"], ["(\\d+)\\s*일 전", "$1d ago"], ["(\\d+)\\s*분 전", "$1m ago"], ["(\\d+)\\s*초 전", "$1s ago"], ["(\\d+)\\s*초", "$1s"], ["(\\d+)\\s*개", "$1"], ["(\\d+)\\s*장면", "$1 scenes"], ["(\\d+)\\s*문단", "$1 paragraphs"], ["(\\d+)\\s*장", "$1 photos"], ["(\\d+)\\s*건", "$1 items"], ["(\\d+)\\s*회", "$1 calls"], ["(\\d+)\\s*명", "$1 people"], ["(\\d+)\\s*점", "$1 pts"], ["(\\d+)\\s*자", "$1 chars"], ["조회수", "views"], ["구독자", "subscribers"], ["좋아요", "likes"], ["댓글", "comments"]];
 /* V2.1 additions */
 Object.assign(window.__ONETAP_I18N_DICT__, {
+"URL이나 본문을 넣으면 3~15장면 대본·화면 제목·자막·무료 성우 더빙을 만들고, 실제 H.264 MP4로 뽑습니다. 막힌 블로그는 붙여넣기로 바로 넘어갑니다.": "Read a URL or paste the body to build a 3–15 scene script with on-screen titles, captions and a free voice-over, then export a real H.264 MP4. Blocked blogs fall back to paste.",
 "무료 성우": "Free voice",
 "선히 · 한국어 여성": "SunHi · Korean female",
 "인준 · 한국어 남성": "InJoon · Korean male",
