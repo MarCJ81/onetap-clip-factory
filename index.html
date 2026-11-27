@@ -718,6 +718,14 @@
                 <span>Fish 키</span>
                 <input type="password" id="inp-fish-key" autocomplete="off" placeholder="Bearer 없이 키만" />
               </label>
+              <div class="fish-key-box">
+                <a class="btn btn-soft btn-sm fish-key-link" id="fish-key-link" href="https://fish.audio/app/api-keys" target="_blank" rel="noopener noreferrer">Fish Audio 키 발급받기 ↗</a>
+                <ol class="fish-key-steps">
+                  <li>링크에서 가입·로그인 후 API 키 생성·복사</li>
+                  <li>Bearer 없이 키 문자열만 붙여넣기</li>
+                  <li>모델 s2.1-pro-free로 미리 듣기</li>
+                </ol>
+              </div>
               <div class="field-row">
                 <label class="mini-field" for="sel-fish-model">
                   <span>모델</span>
@@ -882,8 +890,20 @@
         </ol>
       </section>
 
+      <section class="panel guide-card" id="guide-fish-key">
+        <header class="panel-head"><span class="panel-no">03</span><h2>Fish Audio 키 발급</h2></header>
+        <p class="hint">목소리·BGM 패널에서 더빙을 'Fish Audio 성우'로 고르면 키 입력칸이 열립니다. 가입하면 바로 만들 수 있습니다.</p>
+        <ol class="steps fish-guide-steps">
+          <li><strong>가입·로그인</strong><span>아래 링크에서 Fish Audio에 들어가 계정으로 로그인합니다.</span></li>
+          <li><strong>키 만들기</strong><span>API Keys 화면에서 새 키를 만들고 복사합니다.</span></li>
+          <li><strong>붙여넣기</strong><span>앱의 Fish 키 칸에 Bearer 없이 키 문자열만 붙여넣습니다.</span></li>
+          <li><strong>확인</strong><span>모델은 s2.1-pro-free(무료)로 두고 첫 장면 목소리 미리 듣기를 누릅니다. 실패하면 무음 모드로 내려갑니다.</span></li>
+        </ol>
+        <p><a class="btn btn-soft btn-sm fish-key-link" href="https://fish.audio/app/api-keys" target="_blank" rel="noopener noreferrer">Fish Audio 키 발급받기 ↗</a></p>
+      </section>
+
       <section class="panel guide-card">
-        <header class="panel-head"><span class="panel-no">03</span><h2>솔직한 한계</h2></header>
+        <header class="panel-head"><span class="panel-no">04</span><h2>솔직한 한계</h2></header>
         <ul class="plain-list">
           <li>얼굴 인식 모델은 넣지 않았습니다. 피부톤·움직임 추적은 가볍고 빠르지만, 얼굴이 작거나 피부색이 배경과 비슷하면 중앙 쪽으로 돌아갑니다.</li>
           <li>음성 인식(자동 자막)은 없습니다. 쓰던 SRT/VTT를 올리거나, 대본을 붙여넣어 말소리 구간에 배분하세요. 배분은 글자 수 비례라 실제 발음과 몇백 ms 어긋날 수 있습니다.</li>
@@ -896,7 +916,7 @@
       </section>
 
       <section class="panel guide-card">
-        <header class="panel-head"><span class="panel-no">04</span><h2>YouTube에서 가져오기</h2></header>
+        <header class="panel-head"><span class="panel-no">05</span><h2>YouTube에서 가져오기</h2></header>
         <p class="hint">내 컴퓨터에 <code>yt-dlp</code>가 있다면 아래 한 줄이면 영상과 자막(.srt)을 함께 받습니다. 받은 파일을 공장에 끌어다 놓으세요.</p>
         <code class="cmd block">yt-dlp -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]" --write-subs --write-auto-subs --sub-langs "ko.*,en.*" --convert-subs srt -o "%(title)s.%(ext)s" "https://www.youtube.com/watch?v=..."</code>
         <p class="hint">자막이 따로 안 나오면 <code>--sub-langs ko</code>를 빼고 다시 받아 보세요. 자동 생성 자막이 없으면 직접 만든 자막을 올리면 됩니다.</p>
@@ -904,14 +924,14 @@
       </section>
 
       <section class="panel guide-card">
-        <header class="panel-head"><span class="panel-no">05</span><h2>개인정보</h2></header>
+        <header class="panel-head"><span class="panel-no">06</span><h2>개인정보</h2></header>
         <p class="hint">영상·음성은 브라우저 메모리에서만 처리되고 서버로 전송되지 않습니다. 무료 AI 맛보기나 Gemini 키를 쓸 때는 자막·본문에서 뽑은 텍스트 프롬프트만 전송됩니다. 블로그 사진은 읽기·이미지 프록시를 거쳐 표시만 됩니다.</p>
         <p class="hint">Pro 키는 탭의 sessionStorage에만 저장되고, 연결한 제공자에게 브라우저에서 직접 요청합니다. Gemini·Fish 키도 기본은 sessionStorage이고, '이 브라우저에 기억'을 고른 경우에만 localStorage에 남습니다.</p>
         <p><a href="privacy.html">개인정보 처리방침 전문</a></p>
       </section>
 
       <section class="panel guide-card">
-        <header class="panel-head"><span class="panel-no">06</span><h2>라이선스</h2></header>
+        <header class="panel-head"><span class="panel-no">07</span><h2>라이선스</h2></header>
         <ul class="plain-list mono-small">
           <li>mediabunny 1.66.2 — MPL-2.0</li>
           <li>wavesurfer.js — BSD-3-Clause</li>
