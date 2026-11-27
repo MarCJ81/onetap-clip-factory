@@ -289,6 +289,15 @@
       totalMs: 0,
       themeIndex: 0,
       styleId: 'karaoke',
+      layoutId: 'topTitle',
+      subtitle: null,
+      audioBuffer: null,
+      audioKey: '',
+      audioBusy: null,
+      previewAudio: null,
+      refs: [],
+      refId: '',
+      ytKey: '',
       presetId: '720',
       scriptSource: '',
       scriptBusy: false,
@@ -390,9 +399,12 @@
         film: {
           themeIndex: state.film.themeIndex,
           styleId: state.film.styleId,
+          layoutId: state.film.layoutId || 'topTitle',
           presetId: state.film.presetId,
-          tts: $('#sel-tts') ? $('#sel-tts').value : 'silent',
-          bgm: $('#sel-bgm') ? $('#sel-bgm').value : 'calm',
+          countChoice: $('#sel-film-count') ? $('#sel-film-count').value : 'auto',
+          subtitle: state.film.subtitle || null,
+          tts: $('#sel-tts') ? $('#sel-tts').value : 'edge',
+          bgm: $('#sel-bgm') ? $('#sel-bgm').value : 'lofi',
           bgmVol: $('#rg-bgm') ? $('#rg-bgm').value : '18',
           duck: $('#tg-duck') ? $('#tg-duck').checked : true,
           blogImages: $('#tg-blog-images') ? $('#tg-blog-images').checked : true,
@@ -436,7 +448,10 @@
       var f = p.film;
       if (typeof f.themeIndex === 'number' && C.FILM_THEMES[f.themeIndex]) state.film.themeIndex = f.themeIndex;
       if (f.styleId) state.film.styleId = f.styleId;
+      if (f.layoutId && C.FILM_LAYOUTS.some(function (x) { return x.id === f.layoutId; })) state.film.layoutId = f.layoutId;
       if (f.presetId) state.film.presetId = f.presetId;
+      if (f.countChoice) state.film.countChoice = String(f.countChoice);
+      if (f.subtitle && typeof f.subtitle === 'object') state.film.subtitle = f.subtitle;
       if (f.tts && $('#sel-tts')) $('#sel-tts').value = f.tts;
       if (f.bgm && $('#sel-bgm')) $('#sel-bgm').value = f.bgm;
       if (f.bgmVol && $('#rg-bgm')) { $('#rg-bgm').value = f.bgmVol; if ($('#out-bgm')) $('#out-bgm').textContent = f.bgmVol + '%'; }
@@ -1336,7 +1351,8 @@
     } else {
       var clip = activeClip();
       if (!clip) return;
-      v.muted = true;
+      v.muted = false;
+      try { v.volume = Number($('#rg-vol') ? $('#rg-vol').value : 100) / 100; } catch (e) { /* noop */ }
       var pp = v.play();
       if (pp && pp.catch) pp.catch(function () { /* noop */ });
       state.playClock = performance.now();
@@ -2461,6 +2477,69 @@
     return C.PRESETS.filter(function (p) { return p.id === state.film.presetId; })[0] || C.PRESETS[1];
   }
 
+  function filmLayout() {
+    return state.film.layoutId || 'topTitle';
+  }
+
+  /** 장면 수: 'auto'면 글 길이로 추천, 아니면 3~15 */
+  function filmCount() {
+    var sel = $('#sel-film-count');
+    var raw = sel ? sel.value : 'auto';
+    if (raw === 'auto') {
+      return state.film.article ? C.suggestSceneCount(state.film.article) : 7;
+    }
+    return Math.max(3, Math.min(15, Number(raw) || 7));
+  }
+
+  /** 자막 조절 UI → 렌더 옵션. 미리보기와 MP4가 같은 값을 쓴다. */
+  function subtitleFromUI() {
+    var d = C.SUBTITLE_DEFAULT || {};
+    var get = function (sel, def) { var n = $(sel); return n ? n.value : def; };
+    var pos = get('#sel-sub-pos', 'bottom');
+    var box = $('#tg-sub-box') && $('#tg-sub-box').checked;
+    return {
+      sizePx: Number(get('#rg-sub-size', d.sizePx || 64)),
+      color: get('#inp-sub-color', d.color || '#FFFFFF'),
+      stroke: get('#inp-sub-stroke', d.stroke || '#0A0A0B'),
+      strokeWidth: Number(get('#rg-sub-stroke', d.strokeWidth || 8)),
+      box: box ? hexToRgba(get('#inp-sub-box', '#08090B'), 0.78) : '',
+      pos: pos,
+      posPct: Number(get('#rg-sub-pos', d.posPct || 84)),
+      maxLines: 2,
+      weight: 900
+    };
+  }
+
+  function hexToRgba(hex, alpha) {
+    var m = String(hex || '').replace('#', '');
+    if (m.length === 3) m = m.charAt(0) + m.charAt(0) + m.charAt(1) + m.charAt(1) + m.charAt(2) + m.charAt(2);
+    if (m.length !== 6) return 'rgba(8,9,11,' + alpha + ')';
+    var r = parseInt(m.slice(0, 2), 16), g = parseInt(m.slice(2, 4), 16), b = parseInt(m.slice(4, 6), 16);
+    return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+  }
+
+  function invalidateFilmAudio() {
+    state.film.audioBuffer = null;
+    state.film.audioKey = '';
+    if (state.film.previewAudio) {
+      try { state.film.previewAudio.stop(); } catch (e) { /* noop */ }
+      state.film.previewAudio = null;
+    }
+  }
+
+  function filmAudioKey() {
+    var scenes = state.film.scenes.map(function (s) { return (s.caption || '') + '|' + (s.headline || ''); }).join('\u0001');
+    return [
+      $('#sel-tts') ? $('#sel-tts').value : 'edge',
+      $('#sel-edge-voice') ? $('#sel-edge-voice').value : '',
+      $('#sel-bgm') ? $('#sel-bgm').value : 'lofi',
+      $('#rg-bgm') ? $('#rg-bgm').value : '18',
+      $('#tg-duck') && $('#tg-duck').checked ? '1' : '0',
+      state.film.bgmName || '',
+      scenes
+    ].join('\u0002');
+  }
+
   function filmNote(text, kind) {
     var node = $('#film-render-summary');
     if (!node) return;
@@ -2558,7 +2637,7 @@
     renderBlogMeta();
     renderBlogThumbs();
     /* 바로 규칙 초안을 깔아 둔다 — 미리보기가 비지 않게 */
-    var count = Number($('#sel-film-count') ? $('#sel-film-count').value : 5) || 5;
+    var count = filmCount();
     applyFilmScript(C.localFilmScript(a, { count: count }), 'local');
     loadSceneImages();
     log(L('블로그 글 준비 · 본문 ' + a.paragraphs.length + '문단 · 사진 ' + a.images.length + '장',
@@ -2632,6 +2711,7 @@
     state.film.result = null;
     if (script && script.title && state.film.article) state.film.article.title = script.title;
     state.film.narration = {};
+    invalidateFilmAudio();
     if (source === 'ai') setFilmScriptTag(note || L('AI 대본', 'AI script'));
     else if (source === 'local') setFilmScriptTag(L('규칙 초안', 'Rule draft'), 'warn');
     else setFilmScriptTag(note || source);
@@ -2654,7 +2734,7 @@
       toast(L('먼저 블로그 URL을 읽거나 본문을 붙여넣으세요.', 'Read a blog URL or paste the body first.'), 'warn');
       return;
     }
-    var count = Number($('#sel-film-count') ? $('#sel-film-count').value : 5) || 5;
+    var count = filmCount();
     if (!useAI) {
       applyFilmScript(C.localFilmScript(a, { count: count }), 'local');
       if (note) note.textContent = L('글 문단을 장면 수에 맞춰 나눠 초안을 만들었습니다. AI로 쓰면 문장이 더 매끄러워집니다.',
@@ -2740,6 +2820,7 @@
         input.value = value || '';
         on(input, 'input', function () {
           scene[cls === 'sc-headline' ? 'headline' : cls === 'sc-sub' ? 'sub' : cls === 'sc-caption' ? 'caption' : 'imageQuery'] = input.value;
+          invalidateFilmAudio();
           filmSyncTimeline();
           filmDraw(state.film.tMs);
           filmNote(L('장면 ' + scenes.length + '개 · ' + fmtClock(state.film.totalMs), scenes.length + ' scenes · ' + fmtClock(state.film.totalMs)));
@@ -2873,6 +2954,156 @@
     });
   }
 
+  /* ── YouTube 레퍼런스 수집 ───────────────────────────── */
+  function ytKey() {
+    try { return localStorage.getItem('clip-factory.yt.key') || ''; } catch (e) { return ''; }
+  }
+
+  function saveYtKey(v) {
+    try {
+      if (v) localStorage.setItem('clip-factory.yt.key', v);
+      else localStorage.removeItem('clip-factory.yt.key');
+    } catch (e) { /* noop */ }
+  }
+
+  function isoDurationSec(iso) {
+    var m = String(iso || '').match(/^P(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/);
+    if (!m) return 0;
+    return (Number(m[1] || 0) * 3600) + (Number(m[2] || 0) * 60) + Number(m[3] || 0);
+  }
+
+  function ytApi(path, params) {
+    var qs = Object.keys(params).map(function (k) { return k + '=' + encodeURIComponent(params[k]); }).join('&');
+    return fetch('https://www.googleapis.com/youtube/v3/' + path + '?' + qs, { cache: 'no-store' })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, body: j }; }); });
+  }
+
+  function setRefNote(text, kind) {
+    var n = $('#ref-note');
+    if (!n) return;
+    n.textContent = text;
+    n.className = 'hint' + (kind ? ' is-' + kind : '');
+  }
+
+  function searchYouTubeRefs() {
+    var q = $('#ref-query') ? $('#ref-query').value.trim() : '';
+    if (!q) { toast(L('키워드를 넣어 주세요.', 'Type a keyword first.'), 'warn'); return; }
+    var key = $('#inp-yt-key') && $('#inp-yt-key').value.trim() ? $('#inp-yt-key').value.trim() : ytKey();
+    if (!key) {
+      if ($('#yt-key-field')) $('#yt-key-field').hidden = false;
+      if ($('#inp-yt-key')) $('#inp-yt-key').focus();
+      setRefNote(L('YouTube Data API 키가 필요합니다. 무료로 발급받아 아래 칸에 넣으면 이 브라우저에만 저장됩니다.', 'A free YouTube Data API key is needed. It stays in this browser only.'), 'warn');
+      return;
+    }
+    saveYtKey(key);
+    if ($('#yt-key-field')) $('#yt-key-field').hidden = true;
+    setRefNote(L('“' + q + '” 인기 쇼츠를 찾는 중…', 'Searching popular shorts for “' + q + '”…'));
+    ytApi('search', {
+      part: 'snippet', type: 'video', videoDuration: 'short', order: 'viewCount',
+      maxResults: 12, q: q, regionCode: 'KR', relevanceLanguage: 'ko', key: key
+    }).then(function (res) {
+      if (!res.ok) {
+        var msg = (res.body && res.body.error && (res.body.error.message || res.body.error.status)) || ('HTTP ' + res.status);
+        setRefNote(L('수집 실패: ' + msg + ' — 키의 YouTube Data API 사용 설정을 확인하세요.', 'Collect failed: ' + msg + ' — check that YouTube Data API is enabled for the key.'), 'warn');
+        return null;
+      }
+      var items = (res.body && res.body.items) || [];
+      var ids = items.map(function (i) { return i.id && i.id.videoId; }).filter(Boolean);
+      if (!ids.length) { setRefNote(L('결과가 없습니다. 다른 키워드를 써 보세요.', 'No results. Try another keyword.')); return null; }
+      return ytApi('videos', { part: 'snippet,contentDetails,statistics', id: ids.join(','), key: key }).then(function (d) {
+        var list = (d.body && d.body.items) || [];
+        state.film.refs = list.map(function (v) {
+          var s = v.snippet || {};
+          var st = v.statistics || {};
+          var sec = isoDurationSec(v.contentDetails && v.contentDetails.duration);
+          var thumb = (s.thumbnails && (s.thumbnails.medium || s.thumbnails.default) || {}).url || '';
+          return {
+            id: v.id,
+            title: s.title || '',
+            channel: s.channelTitle || '',
+            views: Number(st.viewCount || 0),
+            sec: sec,
+            thumb: thumb,
+            hook: s.title || '',
+            url: 'https://www.youtube.com/shorts/' + v.id
+          };
+        }).filter(function (x) { return x.sec > 0 && x.sec <= 180; });
+        renderRefs();
+        setRefNote(L('쇼츠 ' + state.film.refs.length + '개를 모았습니다. 하나를 고르면 장면 수·리듬·레이아웃 프리셋이 적용됩니다.', 'Collected ' + state.film.refs.length + ' shorts. Pick one to apply its rhythm and layout preset.'));
+        log(L('YouTube 레퍼런스 · ' + state.film.refs.length + '개 · ' + q, 'YouTube references · ' + state.film.refs.length + ' · ' + q), 'key');
+        return null;
+      });
+    }).catch(function (err) {
+      setRefNote(L('수집 실패: ' + ((err && err.message) || 'network'), 'Collect failed: ' + ((err && err.message) || 'network')), 'warn');
+    });
+  }
+
+  function fmtViews(n) {
+    if (n >= 100000000) return (n / 100000000).toFixed(1) + L('억', 'e8');
+    if (n >= 10000) return (n / 10000).toFixed(1) + L('만', 'e4');
+    return String(n);
+  }
+
+  function renderRefs() {
+    var host = $('#ref-list');
+    if (!host) return;
+    host.innerHTML = '';
+    var list = state.film.refs || [];
+    if (!list.length) {
+      host.appendChild(el('div', { class: 'ref-empty', text: L('아직 모은 레퍼런스가 없습니다.', 'No references collected yet.') }));
+      return;
+    }
+    list.forEach(function (r) {
+      var btn = el('button', { type: 'button', class: 'ref-item' + (state.film.refId === r.id ? ' is-active' : ''), 'aria-label': L('레퍼런스 적용 · ' + r.title, 'Apply reference · ' + r.title) });
+      if (r.thumb) {
+        var img = el('img', { class: 'ref-thumb', src: r.thumb, alt: '', loading: 'lazy' });
+        btn.appendChild(img);
+      } else {
+        btn.appendChild(el('div', { class: 'ref-thumb' }));
+      }
+      var copy = el('div', { class: 'ref-copy' }, [
+        el('strong', { text: r.title }),
+        el('small', { text: r.sec + L('초 · 조회 ' + fmtViews(r.views), 's · ' + fmtViews(r.views) + ' views') })
+      ]);
+      btn.appendChild(copy);
+      btn.appendChild(el('span', { class: 'ref-apply', text: L('적용', 'Apply') }));
+      on(btn, 'click', function () { applyRef(r); });
+      host.appendChild(btn);
+    });
+  }
+
+  function applyRef(r) {
+    state.film.refId = r.id;
+    /* 리듬: 쇼츠 길이를 장면 수로 환산 (3~15) */
+    var count = Math.max(3, Math.min(15, Math.round(r.sec / 3.2)));
+    var t = (r.title || '').toLowerCase();
+    var layout = /뉴스|속보|이슈|정부|발표|경제|주가/.test(t) ? 'newsCard'
+      : /순위|top|랭킹|best|추천/.test(t) ? 'ranking'
+      : r.sec <= 22 ? 'centerImpact' : 'topTitle';
+    if ($('#sel-film-count')) { $('#sel-film-count').value = String(count); state.film.countChoice = String(count); }
+    if ($('#sel-film-layout')) { $('#sel-film-layout').value = layout; state.film.layoutId = layout; }
+    state.film.styleId = layout === 'newsCard' ? 'white' : layout === 'cinematic' ? 'white' : state.film.styleId;
+    if ($('#sel-film-caption')) $('#sel-film-caption').value = state.film.styleId;
+    if (state.film.article) filmGenerate(false);
+    renderRefs();
+    filmDraw(state.film.tMs);
+    savePrefs();
+    setRefNote(L('적용: ' + r.sec + '초 쇼츠 → ' + count + '장면 · ' + (C.FILM_LAYOUTS.filter(function (l) { return l.id === layout; })[0] || {}).label + ' · 훅 “' + (r.title || '').slice(0, 40) + '”',
+      'Applied: ' + r.sec + 's short → ' + count + ' scenes · ' + layout + ' · hook “' + (r.title || '').slice(0, 40) + '”'), 'ok');
+    log(L('레퍼런스 적용 · ' + r.title.slice(0, 30) + ' · ' + count + '장면', 'Reference applied · ' + r.title.slice(0, 30) + ' · ' + count + ' scenes'), 'key');
+    toast(L('레퍼런스 리듬을 적용했습니다.', 'Reference rhythm applied.'), '');
+  }
+
+  function wireRef() {
+    on($('#btn-ref-search'), 'click', searchYouTubeRefs);
+    on($('#ref-query'), 'keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); searchYouTubeRefs(); } });
+    on($('#inp-yt-key'), 'change', function () {
+      saveYtKey($('#inp-yt-key').value.trim());
+      if ($('#inp-yt-key').value.trim()) { $('#yt-key-field').hidden = true; setRefNote(L('키를 저장했습니다. 이제 수집을 누르세요.', 'Key saved. Press collect.')); }
+    });
+    renderRefs();
+  }
+
   /* ── 미리보기 재생 ──────────────────────────────────── */
   function filmDraw(tMs) {
     var canvas = $('#film-canvas');
@@ -2893,6 +3124,7 @@
       progress: at.progress, overall: state.film.totalMs ? tMs / state.film.totalMs : 0,
       theme: filmTheme(), image: state.film.images[at.index] || null,
       captionStyle: filmStyle(), captionOn: true, captionProgress: at.progress,
+      layout: filmLayout(), subtitle: subtitleFromUI(),
       hook: state.film.article ? state.film.article.title : '',
       hookMs: at.index === 0 ? at.localMs : 99999, hookDur: 1500
     });
@@ -2921,6 +3153,58 @@
     state.film.raf = requestAnimationFrame(filmTick);
   }
 
+  /* ── 미리보기 소리: 렌더와 같은 오디오 버퍼를 그대로 재생한다 ─────── */
+  function stopFilmSound() {
+    var pa = state.film.previewAudio;
+    state.film.previewAudio = null;
+    if (!pa) return;
+    try { pa.src.stop(); } catch (e) { /* noop */ }
+  }
+
+  function playFilmSound(offsetMs) {
+    stopFilmSound();
+    var buf = state.film.audioBuffer;
+    if (!buf || !buf.duration) return;
+    var Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    try {
+      if (!state.film.audioCtx) state.film.audioCtx = new Ctx();
+      var ctx = state.film.audioCtx;
+      if (ctx.state === 'suspended' && ctx.resume) ctx.resume();
+      var src = ctx.createBufferSource();
+      src.buffer = buf;
+      var gain = ctx.createGain();
+      gain.gain.value = 1;
+      src.connect(gain);
+      gain.connect(ctx.destination);
+      var off = Math.max(0, Math.min(Math.max(0, buf.duration - 0.05), (offsetMs || 0) / 1000));
+      src.start(0, off);
+      state.film.previewAudio = { src: src, ctx: ctx };
+    } catch (e) { /* 오디오 장치가 없어도 화면은 계속 */ }
+  }
+
+  /** 렌더와 같은 오디오 버퍼를 준비한다(캐시). 목소리·BGM·길이가 바뀌면 다시 만든다. */
+  function ensureFilmAudio(force) {
+    var key = filmAudioKey();
+    if (!force && state.film.audioBuffer && state.film.audioKey === key) return Promise.resolve(state.film.audioBuffer);
+    if (!force && state.film.audioBusy && state.film.audioBusyKey === key) return state.film.audioBusy;
+    var p = buildFilmAudio().then(function (buf) {
+      if (state.film.audioBusy === p) {
+        state.film.audioBuffer = buf || null;
+        state.film.audioKey = buf ? key : '';
+        state.film.audioBusy = null;
+        state.film.audioBusyKey = '';
+      }
+      return buf;
+    }).catch(function () {
+      if (state.film.audioBusy === p) { state.film.audioBusy = null; state.film.audioBusyKey = ''; }
+      return null;
+    });
+    state.film.audioBusy = p;
+    state.film.audioBusyKey = key;
+    return p;
+  }
+
   function filmPlay() {
     if (!state.film.scenes.length || state.film.playing) return;
     if (state.film.tMs >= state.film.totalMs - 30) state.film.tMs = 0;
@@ -2930,11 +3214,28 @@
     if (btn) { btn.classList.add('is-playing'); btn.setAttribute('aria-label', L('미리보기 일시정지', 'Pause preview')); }
     if (T && T.stopSpeaking) T.stopSpeaking();
     state.film.raf = requestAnimationFrame(filmTick);
+    /* 소리는 준비되는 대로 현재 위치에 맞춰 붙는다(화면은 바로 시작) */
+    var key = filmAudioKey();
+    if (state.film.audioBuffer && state.film.audioKey === key) {
+      playFilmSound(state.film.tMs);
+      return;
+    }
+    filmNote(L('목소리·BGM을 준비하는 중…', 'Preparing voice and music…'));
+    ensureFilmAudio().then(function (buf) {
+      if (!state.film.playing) return;
+      if (buf) {
+        playFilmSound(state.film.tMs);
+        filmNote(L('미리보기 · 소리 켜짐 (렌더와 같은 오디오)', 'Preview · sound on (same audio as the render)'));
+      } else {
+        filmNote(L('소리를 만들지 못해 화면만 재생합니다. 성우 서버·BGM을 확인하세요.', 'No audio this time — showing the picture only. Check the voice server and BGM.'));
+      }
+    });
   }
 
   function filmPause() {
     state.film.playing = false;
     if (state.film.raf) { cancelAnimationFrame(state.film.raf); state.film.raf = 0; }
+    stopFilmSound();
     var btn = $('#btn-film-play');
     if (btn) { btn.classList.remove('is-playing'); btn.setAttribute('aria-label', L('미리보기 재생', 'Play preview')); }
     if (T && T.stopSpeaking) T.stopSpeaking();
@@ -2943,6 +3244,7 @@
   function filmSeek(tMs) {
     state.film.tMs = Math.max(0, Math.min(state.film.totalMs, tMs));
     filmDraw(state.film.tMs);
+    if (state.film.playing) playFilmSound(state.film.tMs);
   }
 
   /* ── 더빙·BGM → 하나의 오디오 트랙 ─────────────────────── */
@@ -2950,37 +3252,72 @@
     return (scene && (scene.caption || scene.headline)) || '';
   }
 
+  function narrationVoice() {
+    var mode = $('#sel-tts') ? $('#sel-tts').value : 'edge';
+    if (mode === 'edge') {
+      return { mode: 'edge', voice: $('#sel-edge-voice') ? $('#sel-edge-voice').value : (T.DEFAULT_EDGE_VOICE || 'ko-KR-SunHiNeural'), rate: $('#rg-edge-rate') ? $('#rg-edge-rate').value : '+0%' };
+    }
+    return { mode: 'fish', voice: $('#inp-fish-voice') ? $('#inp-fish-voice').value : '', rate: '+0%' };
+  }
+
+  function synthLine(text, v) {
+    var cache = state.film.narrationCache || (state.film.narrationCache = {});
+    var key = v.mode + '|' + v.voice + '|' + (v.rate || '') + '|' + text;
+    if (cache[key]) return Promise.resolve({ ok: true, buffer: cache[key], cached: true });
+    var task = v.mode === 'edge'
+      ? T.synthesizeEdge(text, { voice: v.voice, rate: v.rate })
+      : T.synthesizeFish(text, { model: $('#sel-fish-model') ? $('#sel-fish-model').value : undefined });
+    return Promise.resolve(task).then(function (res) {
+      if (res && res.ok && res.buffer) cache[key] = res.buffer;
+      return res;
+    });
+  }
+
   function buildNarration() {
-    var mode = $('#sel-tts') ? $('#sel-tts').value : 'silent';
+    var mode = $('#sel-tts') ? $('#sel-tts').value : 'edge';
     var scenes = state.film.scenes;
     state.film.narration = {};
     state.film.narrationNote = '';
-    if (mode !== 'fish' || !T) return Promise.resolve();
-    var st = T.status();
-    if (!st.hasKey) {
-      state.film.narrationNote = 'no_key';
+    if (!T || mode === 'silent' || mode === 'browser' || !scenes.length) {
+      if (mode === 'browser') state.film.narrationNote = 'browser';
       return Promise.resolve();
     }
-    var i = 0;
-    var failed = false;
-    function step() {
-      if (failed || i >= scenes.length) return Promise.resolve();
+    var v = narrationVoice();
+    var next = 0;
+    var done = 0;
+    var firstError = null;
+    /* 4개씩 병렬로 받는다 — 순서는 인덱스로 고정되므로 섞이지 않는다 */
+    function worker() {
+      if (firstError || next >= scenes.length) return Promise.resolve();
+      var i = next++;
       var text = narrationText(scenes[i]);
-      if (!text) { i++; return step(); }
-      filmNote(L('성우 더빙 ' + (i + 1) + ' / ' + scenes.length + '…', 'Voice-over ' + (i + 1) + ' / ' + scenes.length + '…'));
-      return T.synthesizeFish(text, { model: $('#sel-fish-model') ? $('#sel-fish-model').value : undefined })
-        .then(function (res) {
-          if (res.ok) {
-            state.film.narration[i] = res.buffer;
-            i++;
-            return step();
-          }
-          failed = true;
-          state.film.narrationNote = res.reason || 'failed';
-          return null;
-        });
+      if (!text) return worker();
+      return synthLine(text, v).then(function (res) {
+        if (res && res.ok) {
+          state.film.narration[i] = res.buffer;
+        } else if (!firstError) {
+          firstError = res || { reason: 'failed' };
+        }
+        done++;
+        if (!firstError) filmNote(L((v.mode === 'edge' ? '무료 성우' : 'Fish 성우') + ' 더빙 ' + done + ' / ' + scenes.length + '…',
+          (v.mode === 'edge' ? 'Free voice' : 'Fish voice') + ' ' + done + ' / ' + scenes.length + '…'));
+        return worker();
+      });
     }
-    return step();
+    var lanes = [];
+    for (var li = 0; li < 4; li++) lanes.push(worker());
+    return Promise.all(lanes).then(function () {
+      if (firstError) {
+        state.film.narrationNote = firstError.reason || 'failed';
+        state.film.narrationNoteMessage = firstError.message || '';
+      }
+    });
+  }
+
+  function bgmStyleId() {
+    var v = $('#sel-bgm') ? $('#sel-bgm').value : 'lofi';
+    if (v === 'upload' || v === 'none') return v;
+    return v;
   }
 
   function uploadBgm(file) {
@@ -3038,10 +3375,10 @@
       var totalMs = state.film.totalMs;
       if (!totalMs) return null;
       var hasNarration = Object.keys(state.film.narration).length > 0;
-      var bgmSel = $('#sel-bgm') ? $('#sel-bgm').value : 'calm';
+      var bgmSel = bgmStyleId();
       var bgmTask = Promise.resolve(null);
       if (bgmSel === 'upload' && state.film.bgmBuffer) bgmTask = Promise.resolve(state.film.bgmBuffer);
-      else if (bgmSel === 'calm' || bgmSel === 'beat') bgmTask = Bgm ? Bgm.build(totalMs + 400, { style: bgmSel }) : Promise.resolve(null);
+      else if (bgmSel !== 'none' && bgmSel !== 'upload') bgmTask = Bgm ? Bgm.build(totalMs + 400, { style: bgmSel }) : Promise.resolve(null);
       return bgmTask.then(function (bgm) {
         if (!hasNarration && !bgm) return null;
         var buf = T.makeBuffer(totalMs + 260, 44100, 2);
@@ -3089,7 +3426,9 @@
 
     buildFilmAudio().then(function (audioBuffer) {
       if (state.film.narrationNote) {
-        var why = state.film.narrationNote === 'no_key' ? L('Fish 키가 없어 무음으로 렌더합니다.', 'No Fish key — rendering without voice-over.') : L('더빙을 쓰지 못해 무음으로 렌더합니다.', 'Voice-over failed — rendering without it.');
+        var why = state.film.narrationNote === 'no_key' ? L('Fish 키가 없어 BGM만으로 렌더합니다.', 'No Fish key — rendering with music only.')
+          : state.film.narrationNote === 'browser' ? L('브라우저 음성은 MP4에 담을 수 없어 BGM만 넣습니다.', 'Browser speech cannot be recorded into MP4 — adding music only.')
+          : L('더빙을 쓰지 못해 BGM만으로 렌더합니다.', 'Voice-over failed — rendering with music only.');
         filmNote(why);
         log(why, 'warn');
       }
@@ -3102,6 +3441,8 @@
         fps: 30,
         theme: filmTheme(),
         style: filmStyle(),
+        layout: filmLayout(),
+        subtitle: subtitleFromUI(),
         hook: state.film.article ? state.film.article.title : '',
         hookDur: 1500,
         captionOn: true,
@@ -3149,11 +3490,38 @@
     log(L('카드 쇼츠 내려받기 · ' + name, 'Card shorts download · ' + name), 'key');
   }
 
+  function playBufferPreview(buffer) {
+    var Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx || !buffer) return;
+    try {
+      var ctx = new Ctx();
+      var src = ctx.createBufferSource();
+      src.buffer = buffer;
+      src.connect(ctx.destination);
+      src.start();
+      src.onended = function () { try { ctx.close(); } catch (e) { /* noop */ } };
+    } catch (e) { /* noop */ }
+  }
+
   function testVoice() {
     var scenes = state.film.scenes;
     if (!scenes.length) { toast(L('먼저 장면 대본을 만드세요.', 'Build the scene script first.'), 'warn'); return; }
-    var mode = $('#sel-tts') ? $('#sel-tts').value : 'silent';
+    var mode = $('#sel-tts') ? $('#sel-tts').value : 'edge';
     var text = narrationText(scenes[0]);
+    if (mode === 'edge') {
+      var v = narrationVoice();
+      filmNote(L('무료 성우 음성을 받는 중…', 'Fetching the free voice…'));
+      T.synthesizeEdge(text, { voice: v.voice, rate: v.rate }).then(function (res) {
+        if (!res.ok) {
+          filmNote(L('더빙 실패: ' + (res.message || res.reason), 'Voice failed: ' + (res.message || res.reason)), 'warn');
+          toast(L('무료 성우를 받지 못했습니다. 성우 서버 주소를 확인하세요.', 'Could not get the free voice. Check the voice server.'), 'warn');
+          return;
+        }
+        playBufferPreview(res.buffer);
+        filmNote(L('미리 듣기 · ' + (res.voice || v.voice), 'Preview · ' + (res.voice || v.voice)));
+      });
+      return;
+    }
     if (mode === 'browser') {
       if (!T.speechSupported()) { toast(L('이 브라우저에는 음성 합성이 없습니다.', 'This browser has no speech synthesis.'), 'warn'); return; }
       T.speak(text).then(function (r) {
@@ -3711,7 +4079,125 @@
     });
   }
 
+  function bindSubtitleControls() {
+    var d = C.SUBTITLE_DEFAULT || {};
+    var size = $('#rg-sub-size'), pos = $('#sel-sub-pos'), pct = $('#rg-sub-pos');
+    var color = $('#inp-sub-color'), stroke = $('#inp-sub-stroke'), box = $('#inp-sub-box');
+    var width = $('#rg-sub-stroke'), boxOn = $('#tg-sub-box');
+    if (!size) return;
+    size.value = d.sizePx || 64;
+    color.value = (d.color || '#FFFFFF').toLowerCase();
+    stroke.value = (d.stroke || '#0A0A0B').toLowerCase();
+    box.value = '#08090B';
+    width.value = d.strokeWidth || 8;
+    pct.value = d.posPct || 84;
+    pos.value = d.pos || 'bottom';
+    boxOn.checked = false;
+    var outSize = $('#out-sub-size'), outPos = $('#out-sub-pos'), outStroke = $('#out-sub-stroke');
+    function syncLabels() {
+      if (outSize) outSize.textContent = size.value + 'px';
+      if (outPos) outPos.textContent = pct.value + '%';
+      if (outStroke) outStroke.textContent = width.value;
+      pct.disabled = pos.value !== 'custom';
+    }
+    function apply() {
+      state.film.subtitle = subtitleFromUI();
+      syncLabels();
+      filmDraw(state.film.tMs);
+      savePrefs();
+    }
+    ['input', 'change'].forEach(function (evt) {
+      [size, pct, color, stroke, box, width].forEach(function (node) { on(node, evt, apply); });
+    });
+    on(pos, 'change', function () {
+      if (pos.value === 'top') pct.value = '13';
+      else if (pos.value === 'center') pct.value = '50';
+      else if (pos.value === 'bottom') pct.value = '84';
+      apply();
+    });
+    on(boxOn, 'change', apply);
+    on($('#btn-sub-reset'), 'click', function () {
+      size.value = d.sizePx || 64;
+      color.value = (d.color || '#FFFFFF').toLowerCase();
+      stroke.value = (d.stroke || '#0A0A0B').toLowerCase();
+      width.value = d.strokeWidth || 8;
+      pos.value = d.pos || 'bottom';
+      pct.value = d.posPct || 84;
+      boxOn.checked = false;
+      apply();
+      toast(L('자막을 기본값으로 되돌렸습니다.', 'Subtitle settings reset.'), '');
+    });
+    syncLabels();
+    state.film.subtitle = subtitleFromUI();
+  }
+
+  /** 저장된 자막 설정을 UI 에 되돌린다 */
+  function applySavedSubtitle() {
+    var sub = state.film.subtitle;
+    if (!sub) return;
+    var set = function (sel, v) { var n = $(sel); if (n && v !== undefined && v !== null) n.value = v; };
+    set('#rg-sub-size', sub.sizePx);
+    set('#rg-sub-stroke', sub.strokeWidth);
+    set('#sel-sub-pos', sub.pos);
+    set('#rg-sub-pos', sub.posPct);
+    if (sub.color && $('#inp-sub-color')) $('#inp-sub-color').value = sub.color;
+    if (sub.stroke && $('#inp-sub-stroke')) $('#inp-sub-stroke').value = sub.stroke;
+    if ($('#tg-sub-box')) $('#tg-sub-box').checked = !!sub.box;
+    if ($('#out-sub-size')) $('#out-sub-size').textContent = ($('#rg-sub-size').value || '64') + 'px';
+    if ($('#out-sub-pos')) $('#out-sub-pos').textContent = ($('#rg-sub-pos').value || '84') + '%';
+    if ($('#out-sub-stroke')) $('#out-sub-stroke').textContent = $('#rg-sub-stroke').value || '8';
+    if ($('#rg-sub-pos')) $('#rg-sub-pos').disabled = $('#sel-sub-pos').value !== 'custom';
+    state.film.subtitle = subtitleFromUI();
+  }
+
   function buildFilmSelects() {
+    var count = $('#sel-film-count');
+    if (count && !count.options.length) {
+      count.appendChild(el('option', { value: 'auto', text: L('자동 추천 (글 길이)', 'Auto (by length)') }));
+      for (var n = 3; n <= 15; n++) {
+        count.appendChild(el('option', { value: String(n), text: L(n + '장면', n + ' scenes') }));
+      }
+      count.value = state.film.countChoice || 'auto';
+      on(count, 'change', function () {
+        state.film.countChoice = count.value;
+        if (state.film.article) filmGenerate(false);
+        savePrefs();
+      });
+    }
+    var layout = $('#sel-film-layout');
+    if (layout && !layout.options.length) {
+      C.FILM_LAYOUTS.forEach(function (l) {
+        layout.appendChild(el('option', { value: l.id, text: L(l.label, l.id === 'topTitle' ? 'Top title + bottom captions'
+          : l.id === 'centerImpact' ? 'Center impact keyword' : l.id === 'newsCard' ? 'News / magazine card'
+          : l.id === 'ranking' ? 'Ranking countdown' : 'Cinematic minimal') }));
+      });
+      layout.value = state.film.layoutId || 'topTitle';
+      state.film.layoutId = layout.value;
+      on(layout, 'change', function () {
+        state.film.layoutId = layout.value;
+        filmDraw(state.film.tMs);
+        savePrefs();
+      });
+    }
+    var edgeVoice = $('#sel-edge-voice');
+    if (edgeVoice && !edgeVoice.options.length) {
+      var voices = (T && T.EDGE_VOICES) || [];
+      voices.forEach(function (v) {
+        edgeVoice.appendChild(el('option', { value: v.id, text: L(v.label, v.id === 'ko-KR-SunHiNeural' ? 'SunHi · Korean female'
+          : v.id === 'ko-KR-InJoonNeural' ? 'InJoon · Korean male'
+          : v.id === 'ko-KR-HyunsuMultilingualNeural' ? 'Hyunsu · Korean male (multilingual)'
+          : v.id === 'en-US-EmmaMultilingualNeural' ? 'Emma · English female' : 'Andrew · English male') }));
+      });
+      var st0 = T ? T.status() : null;
+      edgeVoice.value = (st0 && st0.edgeVoice) || (T && T.DEFAULT_EDGE_VOICE) || 'ko-KR-SunHiNeural';
+      on(edgeVoice, 'change', function () {
+        if (T) T.save({ edgeVoice: edgeVoice.value });
+        invalidateFilmAudio();
+        savePrefs();
+      });
+    }
+    bindSubtitleControls();
+    applySavedSubtitle();
     var cap = $('#sel-film-caption');
     if (cap && !cap.options.length) {
       C.CAPTION_STYLES.forEach(function (s) {
@@ -3775,11 +4261,20 @@
     });
     on($('#sel-tts'), 'change', function () {
       var v = $('#sel-tts').value;
-      $('#fish-fields').hidden = v !== 'fish';
+      if ($('#fish-fields')) $('#fish-fields').hidden = v !== 'fish';
+      if ($('#edge-fields')) $('#edge-fields').hidden = v !== 'edge';
       var tag = $('#tts-tag');
-      if (tag) tag.textContent = v === 'fish' ? 'Fish Audio' : v === 'browser' ? L('브라우저 음성', 'Browser voice') : L('무음 자막', 'Silent captions');
+      if (tag) tag.textContent = v === 'edge' ? L('무료 성우', 'Free voice') : v === 'fish' ? 'Fish Audio' : v === 'browser' ? L('브라우저 음성', 'Browser voice') : L('무음 자막', 'Silent captions');
+      invalidateFilmAudio();
       savePrefs();
     });
+    on($('#inp-edge-proxy'), 'change', function () {
+      if (!T) return;
+      T.save({ edgeProxy: $('#inp-edge-proxy').value });
+      invalidateFilmAudio();
+      savePrefs();
+    });
+    on($('#rg-edge-rate'), 'change', function () { invalidateFilmAudio(); savePrefs(); });
     ['#inp-fish-key', '#inp-fish-voice', '#inp-fish-proxy'].forEach(function (sel) {
       on($(sel), 'change', function () {
         if (!T) return;
@@ -3793,6 +4288,7 @@
     on($('#btn-tts-test'), 'click', testVoice);
     on($('#sel-bgm'), 'change', function () {
       if ($('#sel-bgm').value === 'upload') $('#bgm-file').click();
+      invalidateFilmAudio();
       savePrefs();
     });
     on($('#bgm-file'), 'change', function () {
@@ -3804,8 +4300,8 @@
       fillRange($('#rg-bgm'));
       $('#out-bgm').textContent = $('#rg-bgm').value + '%';
     });
-    on($('#rg-bgm'), 'change', savePrefs);
-    on($('#tg-duck'), 'change', savePrefs);
+    on($('#rg-bgm'), 'change', function () { invalidateFilmAudio(); savePrefs(); });
+    on($('#tg-duck'), 'change', function () { invalidateFilmAudio(); savePrefs(); });
     on($('#btn-film-play'), 'click', function () { state.film.playing ? filmPause() : filmPlay(); });
     on($('#film-scrub'), 'input', function () {
       var r = Number($('#film-scrub').value) / 1000;
@@ -3826,6 +4322,12 @@
       if (st.voice) $('#inp-fish-voice').value = st.voice;
       if (st.proxy) $('#inp-fish-proxy').value = st.proxy;
       if (st.model) $('#sel-fish-model').value = st.model;
+      if (st.edgeProxy && $('#inp-edge-proxy')) $('#inp-edge-proxy').value = st.edgeProxy;
+      var ttsMode = $('#sel-tts') ? $('#sel-tts').value : 'edge';
+      if ($('#edge-fields')) $('#edge-fields').hidden = ttsMode !== 'edge';
+      if ($('#fish-fields')) $('#fish-fields').hidden = ttsMode !== 'fish';
+      var ttag = $('#tts-tag');
+      if (ttag) ttag.textContent = ttsMode === 'edge' ? L('무료 성우', 'Free voice') : ttsMode === 'fish' ? 'Fish Audio' : ttsMode === 'browser' ? L('브라우저 음성', 'Browser voice') : L('무음 자막', 'Silent captions');
     }
     renderBlogMeta();
     renderBlogThumbs();
@@ -4055,6 +4557,7 @@
     wireQueue();
     wireSubtitles();
     wireBlog();
+    wireRef();
     wireGemini();
     on($('#btn-gemini'), 'click', updateGeminiBadge);
     wireMisc();

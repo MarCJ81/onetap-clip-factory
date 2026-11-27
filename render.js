@@ -95,20 +95,47 @@
   }
 
   /* ── 자막 그리기 (미리보기·렌더 공용) ─────────────────── */
+  /** 폭 기준으로 줄을 나누고, 넘치면 글자를 줄여서라도 화면 안에 넣는다 */
+  function fitCaption(ctx, text, maxWidth, maxLines, fs, weight, minRatio) {
+    var floor = Math.round(fs * (minRatio || 0.62));
+    var size = fs;
+    var lines = [];
+    for (var guard = 0; guard < 10; guard++) {
+      ctx.font = (weight || 900) + ' ' + size + 'px "PlexKR", "Apple SD Gothic Neo", sans-serif';
+      lines = wrapWidth(ctx, text, maxWidth, maxLines);
+      var flat = lines.join(' ');
+      var want = String(text || '').replace(/\s+/g, ' ').trim();
+      var clipped = lines.length && lines[lines.length - 1].slice(-1) === '…' && flat.length < want.length;
+      if (!clipped || size <= floor) break;
+      size = Math.max(floor, Math.round(size * 0.92));
+    }
+    return { lines: lines, size: size };
+  }
+
   function drawCaption(ctx, opts) {
     var text = opts && opts.text;
     if (!text) return;
     var w = opts.w, h = opts.h;
     var style = opts.style || C.CAPTION_STYLES[0];
-    var fs = Math.round(h * style.size);
-    var maxChars = Math.max(6, Math.floor(w / (fs * 0.94)));
-    var lines = C.wrapCaption(text, maxChars, 2);
+    var sub = opts.subtitle || null;
+    var scale = w / 1080;
+    var fs = sub && sub.sizePx ? Math.round(sub.sizePx * scale) : Math.round(h * style.size);
+    var maxWidth = w - Math.round(w * (sub && sub.safe ? sub.safe : 0.08) * 2);
+    var maxLines = (sub && sub.maxLines) || 2;
+    var fitted = fitCaption(ctx, text, maxWidth, maxLines, fs, (sub && sub.weight) || style.weight || 900, 0.62);
+    fs = fitted.size;
+    var lines = fitted.lines;
     if (!lines.length) return;
+    var fill = (sub && sub.color) || style.fill;
+    var stroke = sub ? (sub.stroke === undefined ? '' : sub.stroke) : style.stroke;
+    var strokeWidth = sub && sub.strokeWidth !== undefined ? Math.max(0, Math.round(sub.strokeWidth * scale)) : Math.max(4, Math.round(fs * 0.13));
+    var boxColor = sub && sub.box !== undefined ? sub.box : style.box;
+    var alignLeft = style.id === 'kicker';
 
     ctx.save();
-    ctx.textAlign = style.id === 'kicker' ? 'left' : 'center';
+    ctx.textAlign = alignLeft ? 'left' : 'center';
     ctx.textBaseline = 'alphabetic';
-    ctx.font = '900 ' + fs + 'px "PlexKR", "Apple SD Gothic Neo", sans-serif';
+    ctx.font = ((sub && sub.weight) || style.weight || 900) + ' ' + fs + 'px "PlexKR", "Apple SD Gothic Neo", sans-serif';
     var lh = fs * (style.lineGap || 1.14);
     var pad = Math.round(fs * 0.3);
     var widest = 0;
@@ -117,21 +144,30 @@
       if (m > widest) widest = m;
     });
 
-    var blockH = lines.length * lh;
+    var blockH = (lines.length - 1) * lh + fs;
     var baseY;
-    if (opts.baseY !== undefined) baseY = opts.baseY;
-    else if (style.pos === 'center') baseY = h * 0.5 - blockH / 2 + fs * 0.82;
-    else baseY = h * 0.80 - (lines.length - 1) * lh;
+    if (opts.baseY !== undefined) {
+      baseY = opts.baseY;
+    } else if (sub) {
+      var pct = sub.pos === 'top' ? 13 : sub.pos === 'center' ? 50 : sub.pos === 'custom' ? (sub.posPct === undefined ? 84 : sub.posPct) : 84;
+      var top = h * (pct / 100) - blockH / 2;
+      baseY = top + fs * 0.82;
+    } else if (style.pos === 'center') {
+      baseY = h * 0.5 - ((lines.length - 1) * lh + fs) / 2 + fs * 0.82;
+    } else {
+      baseY = h * 0.80 - (lines.length - 1) * lh;
+    }
 
-    if (style.box) {
-      var boxW = widest + pad * 2;
-      var boxX = style.id === 'kicker' ? w * 0.07 : (w - boxW) / 2;
-      var boxY = baseY - fs * 0.92 - (lines.length - 1) * 0;
-      var boxH = blockH + pad * 1.1;
-      ctx.fillStyle = style.box;
-      rounded(ctx, boxX, boxY - pad * 0.2, boxW, boxH, Math.round(fs * 0.14));
+    if (boxColor) {
+      var boxW = Math.min(w - Math.round(w * 0.08), widest + pad * 2);
+      var boxX = alignLeft ? Math.round(w * 0.07) : (w - boxW) / 2;
+      var boxY = baseY - fs * 0.9 - pad * 0.28;
+      var boxH = (lines.length - 1) * lh + fs * 1.22;
+      ctx.fillStyle = boxColor;
+      rounded(ctx, boxX, boxY, boxW, boxH, Math.round(fs * 0.14));
       ctx.fill();
-      ctx.textAlign = 'left';
+      if (!alignLeft) ctx.textAlign = 'center';
+      else ctx.textAlign = 'left';
     }
 
     /* 카라오케: 지금 읽는 글자까지 색을 입힌다. 진행률은 글자 수로 환산한다. */
@@ -149,29 +185,29 @@
 
     lines.forEach(function (line, i) {
       var y = baseY + i * lh;
-      var x = style.id === 'kicker' ? w * 0.07 + pad : w / 2;
-      if (style.stroke) {
+      var x = alignLeft ? Math.round(w * 0.07) + pad : w / 2;
+      if (stroke && strokeWidth > 0) {
         ctx.lineJoin = 'round';
         ctx.miterLimit = 2;
-        ctx.lineWidth = Math.max(4, Math.round(fs * 0.13));
-        ctx.strokeStyle = style.stroke;
+        ctx.lineWidth = strokeWidth;
+        ctx.strokeStyle = stroke;
         ctx.strokeText(line, x, y);
       }
-      ctx.fillStyle = style.fill;
+      ctx.fillStyle = fill;
       ctx.fillText(line, x, y);
       var n = karaoke ? perLine[i] : 0;
       if (n > 0) {
         var fullW = ctx.measureText(line).width;
-        var leftX = style.id === 'kicker' ? x : x - fullW / 2;
+        var leftX = alignLeft ? x : x - fullW / 2;
         var preW = ctx.measureText(line.slice(0, n)).width;
         ctx.save();
         ctx.beginPath();
         ctx.rect(leftX - fs * 0.12, y - fs * 1.1, preW + fs * 0.24, fs * 1.42);
         ctx.clip();
-        if (style.stroke) {
+        if (stroke && strokeWidth > 0) {
           ctx.lineJoin = 'round';
-          ctx.lineWidth = Math.max(4, Math.round(fs * 0.13));
-          ctx.strokeStyle = style.stroke;
+          ctx.lineWidth = strokeWidth;
+          ctx.strokeStyle = stroke;
           ctx.strokeText(line, x, y);
         }
         ctx.fillStyle = style.accent || '#FFE81A';
@@ -549,120 +585,263 @@
   /**
    * 카드 쇼츠 한 프레임.
    * o: {w,h,scene,index,total,progress,theme,image,captionStyle,captionProgress,
-   *     hook, hookMs, captionOn, brand}
+   *     hook, hookMs, captionOn, brand, layout, subtitle}
    */
   function drawFilmFrame(ctx, o) {
     var w = o.w, h = o.h;
     var theme = o.theme || C.FILM_THEMES[0];
     var scene = o.scene || {};
+    var layout = o.layout || 'topTitle';
     drawFilmBackdrop(ctx, o);
 
     var mx = Math.round(w * 0.075);
     var inner = w - mx * 2;
     var top = Math.round(h * 0.085);
-
-    /* 상단: 번호 + 브랜드 */
-    ctx.save();
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle = theme.accent;
-    ctx.fillRect(mx, top, Math.round(w * 0.09), Math.max(3, Math.round(h * 0.006)));
-    ctx.font = '700 ' + Math.round(h * 0.021) + 'px "PlexKR", "Apple SD Gothic Neo", sans-serif';
-    ctx.fillStyle = theme.sub;
-    ctx.fillText(('0' + (o.index + 1)).slice(-2) + ' / ' + ('0' + (o.total || 1)).slice(-2), mx, top + h * 0.036);
-    ctx.textAlign = 'right';
-    ctx.fillStyle = theme.sub;
-    ctx.globalAlpha = 0.72;
-    ctx.fillText(o.brand || 'ONETAP', w - mx, top + h * 0.036);
-    ctx.restore();
-
-    /* 제목 */
-    ctx.save();
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'alphabetic';
-    var hLen = (scene.headline || '').length;
-    var headSize = Math.round(h * (hLen <= 16 ? 0.074 : hLen <= 26 ? 0.064 : hLen <= 40 ? 0.054 : 0.047));
-    ctx.font = '900 ' + headSize + 'px "PlexKR", "Apple SD Gothic Neo", sans-serif';
+    var font = function (weight, size) { return weight + ' ' + Math.round(size) + 'px "PlexKR", "Apple SD Gothic Neo", sans-serif'; };
     var shadowOn = !!o.image;
-    var headLines = wrapWidth(ctx, scene.headline || '', inner, 3);
-    var y = h * 0.34;
-    var lh = headSize * 1.16;
-    headLines.forEach(function (line, i) {
-      /* 형광 밑줄: 마지막 줄에만, 글자 아래에 또렷하게 */
-      if (i === headLines.length - 1) {
-        var tw = ctx.measureText(line).width;
-        ctx.fillStyle = theme.accent;
-        ctx.globalAlpha = 0.95;
-        ctx.fillRect(mx - Math.round(w * 0.008), y + headSize * 0.26, Math.min(inner, tw + w * 0.016), Math.max(4, Math.round(headSize * 0.07)));
-        ctx.globalAlpha = 1;
-      }
-      if (shadowOn) {
-        ctx.shadowColor = 'rgba(3,4,6,0.72)';
-        ctx.shadowBlur = Math.round(headSize * 0.35);
-        ctx.shadowOffsetY = Math.max(1, Math.round(headSize * 0.06));
-      }
-      ctx.fillStyle = theme.ink;
-      ctx.fillText(line, mx, y);
-      ctx.shadowColor = 'transparent';
-      ctx.shadowBlur = 0;
-      ctx.shadowOffsetY = 0;
-      y += lh;
-    });
-    ctx.restore();
 
-    /* 부제 */
-    if (scene.sub) {
+    /* 상단: 번호 + 브랜드 (시네마틱은 숫자를 생략) */
+    if (layout !== 'cinematic') {
       ctx.save();
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
-      var subSize = Math.round(h * 0.028);
-      ctx.font = '500 ' + subSize + 'px "PlexKR", "Apple SD Gothic Neo", sans-serif';
-      if (o.image) {
-        ctx.shadowColor = 'rgba(3,4,6,0.8)';
-        ctx.shadowBlur = Math.round(subSize * 0.5);
-        ctx.shadowOffsetY = 1;
-      }
+      ctx.fillStyle = theme.accent;
+      ctx.fillRect(mx, top, Math.round(w * 0.09), Math.max(3, Math.round(h * 0.006)));
+      ctx.font = font(700, h * 0.021);
       ctx.fillStyle = theme.sub;
-      var subLines = wrapWidth(ctx, scene.sub, inner, 2);
-      var sy = h * 0.34 + headLines.length * lh + subSize * 0.5;
-      /* 자막 밴드(0.845h)와 부딪히지 않게 위로 당긴다 */
-      var subBottom = sy + (subLines.length - 1) * subSize * 1.42;
-      if (subBottom > h * 0.76) sy -= (subBottom - h * 0.76);
-      subLines.forEach(function (line) {
-        ctx.fillText(line, mx, sy);
-        sy += subSize * 1.42;
-      });
+      ctx.fillText(('0' + (o.index + 1)).slice(-2) + ' / ' + ('0' + (o.total || 1)).slice(-2), mx, top + h * 0.036);
+      ctx.textAlign = 'right';
+      ctx.globalAlpha = 0.72;
+      ctx.fillStyle = theme.sub;
+      ctx.fillText(o.brand || 'ONETAP', w - mx, top + h * 0.036);
       ctx.restore();
     }
 
-    /* 장면 자막 (카라오케) */
+    function headlineLines(size, maxLines, width) {
+      ctx.font = font(900, size);
+      return wrapWidth(ctx, scene.headline || '', width || inner, maxLines || 3);
+    }
+
+    if (layout === 'centerImpact') {
+      /* 가운데 임팩트: 한 문장을 가장 크게, 위아래 여백을 크게 */
+      var ciSize = Math.round(h * 0.082);
+      var ciLines = headlineLines(ciSize, 3, inner);
+      if (ciLines.length > 2) ciSize = Math.round(h * 0.068);
+      ciLines = headlineLines(ciSize, 3, inner);
+      var ciLh = ciSize * 1.12;
+      var ciBlock = (ciLines.length - 1) * ciLh + ciSize;
+      var ciY = h * 0.46 - ciBlock / 2 + ciSize * 0.82;
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.font = font(900, ciSize);
+      ciLines.forEach(function (line, i) {
+        var y = ciY + i * ciLh;
+        if (shadowOn) {
+          ctx.shadowColor = 'rgba(3,4,6,0.78)';
+          ctx.shadowBlur = Math.round(ciSize * 0.4);
+        }
+        ctx.fillStyle = theme.ink;
+        ctx.fillText(line, w / 2, y);
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+        if (i === ciLines.length - 1) {
+          var tw = ctx.measureText(line).width;
+          ctx.fillStyle = theme.accent;
+          ctx.globalAlpha = 0.95;
+          ctx.fillRect(w / 2 - tw / 2 - w * 0.01, y + ciSize * 0.16, Math.min(inner, tw + w * 0.02), Math.max(5, Math.round(ciSize * 0.08)));
+          ctx.globalAlpha = 1;
+        }
+      });
+      if (scene.sub) {
+        ctx.font = font(500, h * 0.026);
+        ctx.fillStyle = theme.sub;
+        var subLines = wrapWidth(ctx, scene.sub, inner * 0.9, 2);
+        var sy = ciY + (ciLines.length - 1) * ciLh + h * 0.055;
+        subLines.forEach(function (line) { ctx.fillText(line, w / 2, sy); sy += h * 0.036; });
+      }
+      ctx.restore();
+    } else if (layout === 'newsCard') {
+      /* 뉴스 카드: 또렷한 패널 안에 제목·부제 */
+      var cardX = mx;
+      var cardW = inner;
+      var cardY = h * 0.21;
+      var cardH = h * 0.44;
+      ctx.save();
+      ctx.fillStyle = 'rgba(8,10,14,0.72)';
+      rounded(ctx, cardX, cardY, cardW, cardH, Math.round(w * 0.035));
+      ctx.fill();
+      ctx.fillStyle = theme.accent;
+      ctx.fillRect(cardX, cardY, Math.round(w * 0.018), cardH);
+      ctx.textAlign = 'left';
+      ctx.fillStyle = theme.accent;
+      ctx.font = font(800, h * 0.024);
+      ctx.fillText('SCENE ' + ('0' + (o.index + 1)).slice(-2), cardX + w * 0.055, cardY + h * 0.062);
+      var ncSize = Math.round(h * 0.058);
+      ctx.font = font(900, ncSize);
+      var ncLines = wrapWidth(ctx, scene.headline || '', cardW - w * 0.11, 3);
+      var ncY = cardY + h * 0.125;
+      ncLines.forEach(function (line) {
+        ctx.fillStyle = '#FDFDFB';
+        ctx.fillText(line, cardX + w * 0.055, ncY);
+        ncY += ncSize * 1.15;
+      });
+      if (scene.sub) {
+        ctx.font = font(500, h * 0.026);
+        ctx.fillStyle = 'rgba(253,253,251,0.74)';
+        var ncs = wrapWidth(ctx, scene.sub, cardW - w * 0.11, 2);
+        ncs.forEach(function (line) { ctx.fillText(line, cardX + w * 0.055, ncY + h * 0.012); ncY += h * 0.036; });
+      }
+      ctx.restore();
+    } else if (layout === 'ranking') {
+      /* 랭킹: 큰 순번이 주인공 */
+      ctx.save();
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = theme.accent;
+      ctx.globalAlpha = 0.2;
+      ctx.font = font(900, h * 0.34);
+      ctx.fillText(('0' + (o.index + 1)).slice(-2), mx - w * 0.01, h * 0.44);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = theme.accent;
+      ctx.font = font(800, h * 0.026);
+      ctx.fillText('RANK ' + ('0' + (o.index + 1)).slice(-2), mx, h * 0.17);
+      var rkSize = Math.round(h * 0.062);
+      ctx.font = font(900, rkSize);
+      var rkLines = wrapWidth(ctx, scene.headline || '', inner, 3);
+      var rkY = h * 0.55;
+      rkLines.forEach(function (line) {
+        if (shadowOn) { ctx.shadowColor = 'rgba(3,4,6,0.78)'; ctx.shadowBlur = Math.round(rkSize * 0.35); }
+        ctx.fillStyle = theme.ink;
+        ctx.fillText(line, mx, rkY);
+        ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
+        rkY += rkSize * 1.14;
+      });
+      if (scene.sub) {
+        ctx.font = font(500, h * 0.028);
+        ctx.fillStyle = theme.sub;
+        var rks = wrapWidth(ctx, scene.sub, inner, 2);
+        rks.forEach(function (line) { ctx.fillText(line, mx, rkY + h * 0.01); rkY += h * 0.038; });
+      }
+      /* 다음 순위까지 차오르는 막대 */
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      ctx.fillRect(mx, h * 0.70, inner, Math.max(4, Math.round(h * 0.006)));
+      ctx.fillStyle = theme.accent;
+      ctx.fillRect(mx, h * 0.70, Math.round(inner * Math.max(0, Math.min(1, o.progress || 0))), Math.max(4, Math.round(h * 0.006)));
+      ctx.restore();
+    } else if (layout === 'cinematic') {
+      /* 시네마틱: 레터박스 + 중앙의 작은 문구 */
+      ctx.save();
+      ctx.fillStyle = '#05060A';
+      ctx.fillRect(0, 0, w, h * 0.11);
+      ctx.fillRect(0, h * 0.89, w, h * 0.11);
+      ctx.textAlign = 'center';
+      ctx.fillStyle = theme.accent;
+      ctx.font = font(700, h * 0.02);
+      ctx.fillText('ONETAP · ' + ('0' + (o.index + 1)).slice(-2), w / 2, h * 0.085);
+      var cnSize = Math.round(h * 0.046);
+      ctx.font = font(700, cnSize);
+      var cnLines = wrapWidth(ctx, scene.headline || '', inner * 0.86, 3);
+      var cnY = h * 0.47 - ((cnLines.length - 1) * cnSize * 1.3) / 2;
+      cnLines.forEach(function (line) {
+        if (shadowOn) { ctx.shadowColor = 'rgba(3,4,6,0.85)'; ctx.shadowBlur = Math.round(cnSize * 0.5); }
+        ctx.fillStyle = theme.ink;
+        ctx.fillText(line, w / 2, cnY);
+        ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
+        cnY += cnSize * 1.3;
+      });
+      if (scene.sub) {
+        ctx.font = font(400, h * 0.024);
+        ctx.fillStyle = theme.sub;
+        ctx.fillText(scene.sub.slice(0, 46), w / 2, cnY + h * 0.018);
+      }
+      ctx.restore();
+    } else {
+      /* topTitle (기본): 위쪽 제목 + 형광 밑줄 */
+      ctx.save();
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+      var hLen = (scene.headline || '').length;
+      var headSize = Math.round(h * (hLen <= 16 ? 0.074 : hLen <= 26 ? 0.064 : hLen <= 40 ? 0.054 : 0.047));
+      ctx.font = font(900, headSize);
+      var headLines = wrapWidth(ctx, scene.headline || '', inner, 3);
+      var y = h * 0.17;
+      var lh = headSize * 1.16;
+      headLines.forEach(function (line, i) {
+        if (i === headLines.length - 1) {
+          var tw = ctx.measureText(line).width;
+          ctx.fillStyle = theme.accent;
+          ctx.globalAlpha = 0.95;
+          ctx.fillRect(mx - Math.round(w * 0.008), y + headSize * 0.26, Math.min(inner, tw + w * 0.016), Math.max(4, Math.round(headSize * 0.07)));
+          ctx.globalAlpha = 1;
+        }
+        if (shadowOn) {
+          ctx.shadowColor = 'rgba(3,4,6,0.72)';
+          ctx.shadowBlur = Math.round(headSize * 0.35);
+          ctx.shadowOffsetY = Math.max(1, Math.round(headSize * 0.06));
+        }
+        ctx.fillStyle = theme.ink;
+        ctx.fillText(line, mx, y);
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetY = 0;
+        y += lh;
+      });
+      ctx.restore();
+
+      if (scene.sub) {
+        ctx.save();
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'alphabetic';
+        var subSize = Math.round(h * 0.028);
+        ctx.font = font(500, subSize);
+        if (o.image) {
+          ctx.shadowColor = 'rgba(3,4,6,0.8)';
+          ctx.shadowBlur = Math.round(subSize * 0.5);
+          ctx.shadowOffsetY = 1;
+        }
+        ctx.fillStyle = theme.sub;
+        var subLines = wrapWidth(ctx, scene.sub, inner, 2);
+        var sy = y + subSize * 0.5;
+        var subBottom = sy + (subLines.length - 1) * subSize * 1.42;
+        if (subBottom > h * 0.72) sy -= (subBottom - h * 0.72);
+        subLines.forEach(function (line) {
+          ctx.fillText(line, mx, sy);
+          sy += subSize * 1.42;
+        });
+        ctx.restore();
+      }
+    }
+
+    /* 장면 자막 */
     if (o.captionOn !== false && scene.caption) {
       drawCaption(ctx, {
         text: scene.caption, w: w, h: h,
         style: o.captionStyle || C.CAPTION_STYLES[4],
-        baseY: h * 0.845,
+        baseY: undefined,
+        subtitle: o.subtitle,
         progress: o.captionProgress
       });
     }
 
-    /* 첫 장면 훅: 앞 1.4초만 크게 */
-    if (o.hook && o.hookMs !== undefined && o.hookMs < (o.hookDur || 1500)) {
-      var a = Math.max(0, Math.min(1, ((o.hookDur || 1500) - o.hookMs) / 400));
+    /* 첫 장면 훅: 앞 1.4초만 크게 (시네마틱은 생략) */
+    if (layout !== 'cinematic' && o.hook && o.hookMs !== undefined && o.hookMs < (o.hookDur || 1500)) {
+      var a = Math.max(0, Math.min(1, ((o.hookDur || 1500) - (o.hookMs || 0)) / 400));
       ctx.save();
       ctx.globalAlpha = Math.min(1, a);
       ctx.fillStyle = theme.accent;
-      ctx.fillRect(0, h * 0.155, w, Math.round(h * 0.115));
+      ctx.fillRect(0, h * 0.055, w, Math.round(h * 0.10));
       ctx.fillStyle = theme.accentInk;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      var hookSize = Math.round(h * 0.048);
+      var hookSize = Math.round(h * 0.044);
       var hookLines = [];
-      for (var hs = hookSize; hs > h * 0.03; hs -= 2) {
-        ctx.font = '900 ' + hs + 'px "PlexKR", "Apple SD Gothic Neo", sans-serif';
+      for (var hs = hookSize; hs > h * 0.028; hs -= 2) {
+        ctx.font = font(900, hs);
         hookLines = wrapWidth(ctx, o.hook, w * 0.84, 1);
         if (hookLines.join(' ').length === String(o.hook).replace(/\s+/g, ' ').trim().length) break;
       }
-      if (hookLines.length) ctx.fillText(hookLines[0], w / 2, h * 0.155 + h * 0.058);
+      if (hookLines.length) ctx.fillText(hookLines[0], w / 2, h * 0.055 + h * 0.05);
       ctx.restore();
     }
 
@@ -678,7 +857,7 @@
   /**
    * 카드 쇼츠 MP4 렌더.
    * @param {object} opts {scenes, timeline, images:{[index]:img}, audioBuffer, preset, fps,
-   *                       theme, style, hook, captionOn, onProgress, signal}
+   *                       theme, style, layout, subtitle, hook, captionOn, onProgress, signal}
    */
   function renderFilm(opts) {
     var o = opts || {};
@@ -729,6 +908,7 @@
                 progress: at.progress, overall: tMs / totalMs,
                 theme: o.theme, image: (o.images || {})[at.index] || null,
                 captionStyle: o.style, captionOn: o.captionOn, captionProgress: at.progress,
+                layout: o.layout, subtitle: o.subtitle,
                 hook: o.hook, hookMs: at.index === 0 ? at.localMs : 99999, hookDur: o.hookDur
               });
             }
